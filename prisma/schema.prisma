@@ -1,0 +1,84 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/lib/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id    String  @id @default(cuid())
+  email String? @unique
+
+  courses Course[]
+}
+
+model Course {
+  id                           String   @id @default(cuid())
+  topic                        String
+  level                        Level
+  weeks                        Int      @default(5)
+  hoursPerWeek                 Float
+  sessionsPerWeek              Int
+  preferredSessionLengthMinutes Int
+  stylePreferences             Json
+  createdAt                    DateTime @default(now())
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id])
+
+  courseWeeks Week[]
+  logs        PromptLog[]
+}
+
+model Week {
+  id            String  @id @default(cuid())
+  index         Int
+  title         String
+  summary       String
+  targetMinutes Int
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id])
+
+  sessions Session[]
+}
+
+model Session {
+  id               String       @id @default(cuid())
+  indexWithinWeek  Int
+  title            String
+  objective        String
+  estimatedMinutes Int
+  activityType     ActivityType
+  content          Json
+
+  weekId String
+  week   Week @relation(fields: [weekId], references: [id])
+}
+
+model PromptLog {
+  id        String   @id @default(cuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id])
+  request   Json
+  response  Json
+  createdAt DateTime @default(now())
+}
+
+enum Level {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum ActivityType {
+  READING
+  PRACTICE
+  QUIZ
+  MIXED
+}
