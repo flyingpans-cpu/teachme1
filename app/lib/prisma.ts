@@ -10,20 +10,36 @@ function getDatabaseUrl(): string {
   const url = process.env.DATABASE_URL ?? "file:./dev.db";
   const filePath = url.replace(/^file:/, "").trim();
   if (path.isAbsolute(filePath)) return url;
-  const resolved = path.join(process.cwd(), filePath.startsWith(".") ? "prisma" : "", filePath.replace(/^\.\//, ""));
+  const resolved = path.join(
+    process.cwd(),
+    filePath.startsWith(".") ? "prisma" : "",
+    filePath.replace(/^\.\//, ""),
+  );
   return `file:${resolved}`;
 }
 
-const adapter = new PrismaBetterSqlite3({ url: getDatabaseUrl() });
+function shouldDisablePersistence() {
+  return process.env.VERCEL === "1";
+}
 
-export const prisma =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+export function getPrisma() {
+  if (shouldDisablePersistence()) {
+    return null;
+  }
+
+  if (globalForPrisma.prisma) {
+    return globalForPrisma.prisma;
+  }
+
+  const adapter = new PrismaBetterSqlite3({ url: getDatabaseUrl() });
+  const prisma = new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 
-if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
-}
+  if (process.env.NODE_ENV !== "production") {
+    globalForPrisma.prisma = prisma;
+  }
 
+  return prisma;
+}

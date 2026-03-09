@@ -5,13 +5,13 @@ import {
   GeneratedCourseSchema,
   StylePreferencesSchema,
 } from "@/app/lib/courseSchema";
+import { saveCourseIfPossible } from "@/app/lib/coursePersistence";
 import { buildTimeAllocation } from "@/app/lib/timeAllocation";
 import {
   generateCourseOutlineWithLLM,
   generateLessonChunkWithLLM,
   runTutorIntakeWithLLM,
 } from "@/app/lib/llmPrompt";
-import { prisma } from "@/app/lib/prisma";
 
 const TutorMessageSchema = z.object({
   role: z.enum(["user", "assistant"]),
@@ -286,42 +286,6 @@ export async function POST(request: Request) {
       week.targetMinutes = weekMinutes;
     }
 
-    const createdCourse = await prisma.course.create({
-      data: {
-        topic: requestInput.topic,
-        level: requestInput.level ?? "BEGINNER",
-        weeks: requestInput.weeks,
-        hoursPerWeek: requestInput.hoursPerWeek,
-        sessionsPerWeek: requestInput.sessionsPerWeek,
-        preferredSessionLengthMinutes: requestInput.preferredSessionLengthMinutes,
-        stylePreferences: requestInput.stylePreferences,
-        courseWeeks: {
-          create: validated.weeks.map((week) => ({
-            index: week.weekIndex,
-            title: week.title,
-            summary: week.summary,
-            targetMinutes: week.targetMinutes,
-            sessions: {
-              create: week.sessions.map((session) => ({
-                indexWithinWeek: session.sessionIndex,
-                title: session.title,
-                objective: session.objective,
-                estimatedMinutes: session.estimatedMinutes,
-                activityType: session.activityType,
-                content: session.contentBlocks ?? [],
-              })),
-            },
-          })),
-        },
-        logs: {
-          create: {
-            request: requestInput,
-            response: validated,
-          },
-        },
-      },
-    });
-
     const planMessage = buildPlanSummary(validated);
     const firstSession = allocation.sessions[0];
     const totalDays = allocation.sessions.length;
@@ -338,7 +302,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       assistantMessage: `${planMessage}\n\n${firstLesson}`,
-      course: createdCourse,
+      course: await saveCourseIfPossible(requestInput, validated),
       sessionState: {
         stage: "generated",
         captured: requestInput,

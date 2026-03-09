@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { CourseRequestSchema, GeneratedCourseSchema } from "@/app/lib/courseSchema";
+import { saveCourseIfPossible } from "@/app/lib/coursePersistence";
 import { buildTimeAllocation } from "@/app/lib/timeAllocation";
 import { generateCourseOutlineWithLLM } from "@/app/lib/llmPrompt";
-import { prisma } from "@/app/lib/prisma";
 
-const ErrorResponseSchema = z.object({
-  error: z.string(),
-});
-
-export type CreateCourseError = z.infer<typeof ErrorResponseSchema>;
+export type CreateCourseError = {
+  error: string;
+};
 
 export async function POST(request: Request) {
   try {
@@ -81,53 +79,9 @@ export async function POST(request: Request) {
       throw new Error("Time totals do not match allocation skeleton");
     }
 
-    const createdCourse = await prisma.course.create({
-      data: {
-        topic: parsed.topic,
-        level: parsed.level ?? "BEGINNER",
-        weeks,
-        hoursPerWeek,
-        sessionsPerWeek,
-        preferredSessionLengthMinutes,
-        stylePreferences: parsed.stylePreferences,
-        courseWeeks: {
-          create: validated.weeks.map((week) => ({
-            index: week.weekIndex,
-            title: week.title,
-            summary: week.summary,
-            targetMinutes: week.targetMinutes,
-            sessions: {
-              create: week.sessions.map((session) => ({
-                indexWithinWeek: session.sessionIndex,
-                title: session.title,
-                objective: session.objective,
-                estimatedMinutes: session.estimatedMinutes,
-                activityType: session.activityType,
-                content: session.contentBlocks,
-              })),
-            },
-          })),
-        },
-        logs: {
-          create: {
-            request: parsed,
-            response: validated,
-          },
-        },
-      },
-      include: {
-        courseWeeks: {
-          include: {
-            sessions: true,
-          },
-        },
-      },
-    });
-
-    const { courseWeeks, ...rest } = createdCourse;
     return NextResponse.json(
       {
-        course: { ...rest, weeks: courseWeeks },
+        course: await saveCourseIfPossible(parsed, validated),
       },
       { status: 201 },
     );
