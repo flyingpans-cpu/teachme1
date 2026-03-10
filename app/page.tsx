@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ChatMessage = {
   id: string;
@@ -53,24 +53,6 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function buildConfirmationMessage(setup: Required<SetupState>) {
-  const levelLabel =
-    setup.level === "INTERMEDIATE"
-      ? "Medium"
-      : setup.level === "BEGINNER"
-        ? "Beginner"
-        : "Advanced";
-
-  return [
-    `I’m ready to build your plan for ${setup.topic}.`,
-    `Commitment: ${setup.daysPerWeek} days each week`,
-    `Session length: ${setup.minutesPerDay} minutes per day`,
-    `Level: ${levelLabel}`,
-    "",
-    "Reply `yes` to generate your 5-week course, or press `New chat` to change your setup.",
-  ].join("\n");
-}
-
 function buildCapturedState(setup: Required<SetupState>): NonNullable<TutorSessionState["captured"]> {
   return {
     topic: setup.topic,
@@ -79,6 +61,13 @@ function buildCapturedState(setup: Required<SetupState>): NonNullable<TutorSessi
     preferredSessionLengthMinutes: setup.minutesPerDay,
     hoursPerWeek: (setup.daysPerWeek * setup.minutesPerDay) / 60,
   };
+}
+
+function formatMessage(message: string) {
+  return message
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n");
 }
 
 function ChipButton<T extends string | number>(props: {
@@ -95,8 +84,8 @@ function ChipButton<T extends string | number>(props: {
       onClick={() => onSelect(value)}
       className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
         selected
-          ? "border-black bg-black text-white"
-          : "border-black/10 bg-white text-black/75 hover:border-black/30"
+          ? "border-white/70 bg-white text-black"
+          : "border-white/12 bg-white/6 text-white/78 hover:border-white/24 hover:bg-white/10"
       }`}
     >
       {label}
@@ -144,19 +133,37 @@ export default function Home() {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
-  const canStart = useMemo(() => {
-    return (
-      setup.topic.trim().length >= 3 &&
-      Boolean(setup.daysPerWeek) &&
-      Boolean(setup.minutesPerDay) &&
-      Boolean(setup.level)
-    );
-  }, [setup]);
+  const canStart =
+    setup.topic.trim().length >= 3 &&
+    Boolean(setup.daysPerWeek) &&
+    Boolean(setup.minutesPerDay) &&
+    Boolean(setup.level);
 
-  const canSend = useMemo(() => input.trim().length > 0 && !isSending, [input, isSending]);
+  const canSend = input.trim().length > 0 && !isSending;
 
-  const handleStart = () => {
-    if (!canStart) return;
+  async function requestTutor(nextMessages: ChatMessage[], nextState: TutorSessionState) {
+    const response = await fetch("/api/tutor", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: nextMessages.map(({ role, content }) => ({ role, content })),
+        sessionState: nextState,
+      }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.error || "Tutor is unavailable. Please try again.");
+    }
+
+    return (await response.json()) as {
+      assistantMessage?: string;
+      sessionState?: TutorSessionState;
+    };
+  }
+
+  const handleStart = async () => {
+    if (!canStart || isSending) return;
 
     const completeSetup = {
       topic: setup.topic.trim(),
@@ -165,19 +172,37 @@ export default function Home() {
       level: setup.level as SetupLevel,
     };
 
-    setPhase("chat");
-    setError(null);
-    setSessionState({
+    const nextState: TutorSessionState = {
       stage: "confirm",
       captured: buildCapturedState(completeSetup),
-    });
-    setMessages([
-      {
-        id: createId(),
-        role: "assistant",
-        content: buildConfirmationMessage(completeSetup),
-      },
-    ]);
+    };
+
+    setPhase("chat");
+    setMessages([]);
+    setSessionState(nextState);
+    setError(null);
+    setIsSending(true);
+
+    try {
+      const data = await requestTutor([], nextState);
+      setMessages([
+        {
+          id: createId(),
+          role: "assistant",
+          content: formatMessage(
+            data.assistantMessage ?? "I couldn't generate your course.",
+          ),
+        },
+      ]);
+      if (data.sessionState) {
+        setSessionState(data.sessionState);
+      }
+    } catch (cause) {
+      console.error(cause);
+      setError("Something went wrong while generating the course. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
   };
 
   const handleSend = async () => {
@@ -197,33 +222,16 @@ export default function Home() {
     setInput("");
 
     try {
-      const response = await fetch("/api/tutor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: outgoingMessages.map(({ role, content }) => ({ role, content })),
-          sessionState,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || "Tutor is unavailable. Please try again.");
-      }
-
-      const data = (await response.json()) as {
-        assistantMessage?: string;
-        sessionState?: TutorSessionState;
-      };
-
+      const data = await requestTutor(outgoingMessages, sessionState);
       setMessages((current) => [
         ...current,
         {
           id: createId(),
           role: "assistant",
-          content:
+          content: formatMessage(
             data.assistantMessage ??
-            "I didn’t catch that. Could you rephrase your last message?",
+              "I didn’t catch that. Could you rephrase your last message?",
+          ),
         },
       ]);
 
@@ -246,54 +254,55 @@ export default function Home() {
     setSessionState({});
     setInput("");
     setError(null);
+    setIsSending(false);
   };
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-black/10 bg-white/70 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
+    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
+      <header className="border-b border-white/8 bg-black/10 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
           <div className="flex items-center gap-3">
-            <span className="rounded-full bg-black px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+            <span className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/92">
               TeachMe Tutor
             </span>
-            <p className="text-sm text-black/60">
-              Build a 5-week study plan before you enter the tutor chat.
+            <p className="text-sm text-white/52">
+              Learn in a paced, text-first flow.
             </p>
           </div>
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-full border border-black/15 bg-white px-3 py-1 text-xs font-semibold uppercase tracking-wide text-black/70 transition hover:border-black/30"
+            className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/72 transition hover:border-white/22 hover:bg-white/10"
           >
             New chat
           </button>
         </div>
       </header>
 
-      <main className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-8">
+      <main className="mx-auto max-w-6xl px-5 py-8 sm:py-10">
         {phase === "setup" ? (
-          <section className="rounded-3xl bg-[var(--surface)] p-6 shadow-[0_20px_60px_var(--shadow)] ring-1 ring-black/5 sm:p-8">
-            <div className="max-w-3xl space-y-8">
-              <div className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-dark)]">
-                  Setup
+          <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] px-6 py-7 shadow-[0_30px_120px_rgba(0,0,0,0.35)] sm:px-8 sm:py-10">
+            <div className="max-w-4xl space-y-10">
+              <div className="space-y-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/44">
+                  Course Setup
                 </p>
-                <h1 className="text-3xl font-semibold tracking-tight text-black sm:text-4xl">
-                  Set your study rhythm before the tutor starts.
+                <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+                  Choose the topic, pace, and level. The tutor will start generating immediately.
                 </h1>
-                <p className="max-w-2xl text-sm text-black/60 sm:text-base">
-                  Pick a commitment that fits your week. The tutor will use it to
-                  generate a 5-week course that matches your actual schedule.
+                <p className="max-w-2xl text-base leading-8 text-white/58">
+                  No confirmation step. Once your setup is complete, the course outline
+                  and first lesson will appear directly in the reading view.
                 </p>
               </div>
 
-              <div className="space-y-6">
-                <div className="space-y-2">
+              <div className="space-y-8">
+                <div className="space-y-3">
                   <label
                     htmlFor="topic"
-                    className="text-xs font-semibold uppercase tracking-wide text-black/60"
+                    className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42"
                   >
-                    What do you want to learn?
+                    Topic
                   </label>
                   <input
                     id="topic"
@@ -301,14 +310,14 @@ export default function Home() {
                     onChange={(event) =>
                       setSetup((current) => ({ ...current, topic: event.target.value }))
                     }
-                    placeholder="Examples: Vibecode, calculus, sourdough, planets..."
-                    className="block w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm text-black shadow-sm outline-none transition focus:border-black/30 focus:ring-2 focus:ring-black/10"
+                    placeholder="Examples: vibecode, memory systems, sourdough..."
+                    className="block w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-lg text-white shadow-sm outline-none transition placeholder:text-white/25 focus:border-white/22 focus:bg-white/[0.06]"
                   />
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-black/60">
-                    1. How many days do you want to commit to?
+                <div className="space-y-4">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+                    1. How many days you want to commit to
                   </p>
                   <div className="flex flex-wrap gap-3">
                     {dayOptions.map((days) => (
@@ -325,9 +334,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-black/60">
-                    2. How many minutes per day?
+                <div className="space-y-4">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+                    2. How many minutes per day
                   </p>
                   <div className="flex flex-wrap gap-3">
                     {minuteOptions.map((minutes) => (
@@ -344,9 +353,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="space-y-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-black/60">
-                    3. What level are you?
+                <div className="space-y-4">
+                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+                    3. What level are you
                   </p>
                   <div className="flex flex-wrap gap-3">
                     {levelOptions.map((level) => (
@@ -364,97 +373,91 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="flex flex-col gap-3 border-t border-black/10 pt-6 sm:flex-row sm:items-center sm:justify-between">
-                <p className="text-sm text-black/55">
-                  Your tutor will confirm these choices in chat before generating the
-                  course.
-                </p>
+              <div className="border-t border-white/8 pt-6">
                 <button
                   type="button"
                   onClick={handleStart}
-                  disabled={!canStart}
-                  className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/40"
+                  disabled={!canStart || isSending}
+                  className="inline-flex items-center justify-center rounded-full border border-white/18 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/20 disabled:text-white/40"
                 >
-                  Start learning
+                  {isSending ? "Generating..." : "Start learning"}
                 </button>
               </div>
             </div>
           </section>
         ) : (
-          <section className="rounded-3xl bg-[var(--surface)] p-5 shadow-[0_20px_60px_var(--shadow)] ring-1 ring-black/5 sm:p-6">
-            <div className="mb-4 flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold tracking-tight text-black">
-                  AI Tutor Chat
-                </h1>
-                <p className="text-sm text-black/60">
-                  Confirm your setup, then the tutor will generate the full plan and
-                  begin the first lesson.
-                </p>
-              </div>
-              <div className="hidden rounded-full bg-[var(--surface-strong)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-black/70 sm:inline-flex">
-                Time-boxed
-              </div>
+          <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_0%,rgba(255,255,255,0.005)_8%,rgba(255,255,255,0.018)_16%,rgba(255,255,255,0.005)_24%,rgba(255,255,255,0.018)_32%,rgba(255,255,255,0.005)_40%,rgba(255,255,255,0.018)_48%,rgba(255,255,255,0.005)_56%,rgba(255,255,255,0.018)_64%,rgba(255,255,255,0.005)_72%,rgba(255,255,255,0.018)_80%,rgba(255,255,255,0.005)_88%,rgba(255,255,255,0.018)_100%)] px-6 py-7 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:px-8 sm:py-10">
+            <div className="mb-8 border-b border-white/8 pb-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/44">
+                Generated Session
+              </p>
+              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                Your tutor is writing directly into the lesson view.
+              </h1>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-10">
               {messages.map((message) => (
-                <div
+                <article
                   key={message.id}
-                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                  className={`${
+                    message.role === "assistant"
+                      ? "border-b border-white/8 pb-10 text-white/82"
+                      : "ml-auto max-w-3xl rounded-3xl border border-white/10 bg-white/8 px-5 py-4 text-white"
+                  }`}
                 >
-                  <div
-                    className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
-                      message.role === "user"
-                        ? "bg-[var(--accent)] text-white"
-                        : "bg-white text-black/80"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
-                  </div>
-                </div>
+                  {message.role === "assistant" ? (
+                    <div className="max-w-5xl whitespace-pre-wrap text-[1.05rem] leading-10 sm:text-[1.15rem]">
+                      {message.content}
+                    </div>
+                  ) : (
+                    <p className="whitespace-pre-wrap text-base leading-8">{message.content}</p>
+                  )}
+                </article>
               ))}
+
               {isSending ? (
-                <div className="flex justify-start">
-                  <div className="rounded-2xl bg-white px-4 py-3 text-sm text-black/60">
-                    Tutor is thinking...
-                  </div>
+                <div className="border-b border-white/8 pb-10 text-[1.05rem] leading-10 text-white/55 sm:text-[1.15rem]">
+                  Writing the next part of your lesson...
                 </div>
               ) : null}
+
               <div ref={endRef} />
             </div>
 
             {error ? (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
                 {error}
               </div>
             ) : null}
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
-                <label
-                  htmlFor="chat-input"
-                  className="text-xs font-semibold uppercase tracking-wide text-black/60"
+            <div className="mt-8 border-t border-white/8 pt-6">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="flex-1">
+                  <label
+                    htmlFor="chat-input"
+                    className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42"
+                  >
+                    Continue the conversation
+                  </label>
+                  <textarea
+                    id="chat-input"
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    rows={3}
+                    placeholder="Share your result, ask a question, or say what happened..."
+                    className="mt-2 block w-full rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/22 focus:bg-white/[0.06]"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSend}
+                  disabled={!canSend}
+                  className="inline-flex items-center justify-center rounded-full border border-white/14 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
                 >
-                  Your message
-                </label>
-                <textarea
-                  id="chat-input"
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  rows={3}
-                  placeholder="Reply yes to generate, or continue the lesson..."
-                  className="mt-1 block w-full rounded-2xl border border-black/10 bg-white px-4 py-3 text-sm text-black shadow-sm outline-none transition focus:border-black/30 focus:ring-2 focus:ring-black/10"
-                />
+                  Send
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleSend}
-                disabled={!canSend}
-                className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-sm font-semibold uppercase tracking-wide text-white transition hover:bg-black/90 disabled:cursor-not-allowed disabled:bg-black/40"
-              >
-                Send
-              </button>
             </div>
           </section>
         )}
