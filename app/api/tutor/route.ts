@@ -8,6 +8,8 @@ import {
 import { saveCourseIfPossible } from "@/app/lib/coursePersistence";
 import { buildTimeAllocation } from "@/app/lib/timeAllocation";
 import {
+  answerCheckpointSideQuestionWithLLM,
+  classifyCheckpointMessageWithLLM,
   generateCourseOutlineWithLLM,
   generateLessonChunkWithLLM,
 } from "@/app/lib/llmPrompt";
@@ -62,6 +64,15 @@ function getLastUserMessage(messages: Array<z.infer<typeof TutorMessageSchema>>)
   return "";
 }
 
+function getLastAssistantMessage(messages: Array<z.infer<typeof TutorMessageSchema>>) {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === "assistant") {
+      return messages[i].content;
+    }
+  }
+  return "";
+}
+
 function buildStyleSummary() {
   return "";
 }
@@ -72,6 +83,7 @@ export async function POST(request: Request) {
     const parsed = TutorRequestSchema.parse(raw);
 
     const lastUserMessage = getLastUserMessage(parsed.messages);
+    const lastAssistantMessage = getLastAssistantMessage(parsed.messages);
     const existingState = parsed.sessionState ?? {};
     const captured = existingState.captured ?? {};
 
@@ -96,6 +108,40 @@ export async function POST(request: Request) {
       }
 
       if (lessonState.awaitingResponse) {
+        let intent: "exercise_response" | "related_question" | "unclear" = "related_question";
+
+        try {
+          const classification = await classifyCheckpointMessageWithLLM({
+            topic: captured.topic ?? "",
+            level: captured.level,
+            dayIndex,
+            totalDays,
+            phase: lessonState.phase,
+            latestAssistantMessage: lastAssistantMessage,
+            learnerMessage: lastUserMessage,
+          });
+          intent = classification.intent;
+        } catch (cause) {
+          console.error("Checkpoint classification failed", cause);
+        }
+
+        if (intent !== "exercise_response") {
+          const answer = await answerCheckpointSideQuestionWithLLM({
+            topic: captured.topic ?? "",
+            level: captured.level,
+            dayIndex,
+            totalDays,
+            phase: lessonState.phase,
+            latestAssistantMessage: lastAssistantMessage,
+            learnerMessage: lastUserMessage,
+          });
+
+          return NextResponse.json({
+            assistantMessage: answer,
+            sessionState: existingState,
+          });
+        }
+
         if (lessonState.phase === "initial") {
           const chunk = await generateLessonChunkWithLLM({
             topic: captured.topic ?? "",

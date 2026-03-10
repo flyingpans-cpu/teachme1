@@ -17,6 +17,15 @@ export type TutorIntakeResult = {
 };
 
 export type LessonPhase = "initial" | "afterCheckpoint1" | "afterCheckpoint2";
+export type CheckpointMessageIntent =
+  | "exercise_response"
+  | "related_question"
+  | "unclear";
+
+export type CheckpointIntentResult = {
+  intent: CheckpointMessageIntent;
+  reasoning?: string;
+};
 
 export function getOpenAIClient() {
   return new OpenAI({
@@ -315,6 +324,119 @@ export async function generateLessonChunkWithLLM(options: {
       { role: "user", content: userPrompt },
     ],
     temperature: 0.7,
+  });
+
+  return response.choices[0]?.message?.content?.trim() ?? "";
+}
+
+export async function classifyCheckpointMessageWithLLM(options: {
+  topic: string;
+  level?: string;
+  dayIndex: number;
+  totalDays: number;
+  phase: LessonPhase;
+  latestAssistantMessage: string;
+  learnerMessage: string;
+}): Promise<CheckpointIntentResult> {
+  const { topic, level, dayIndex, totalDays, phase, latestAssistantMessage, learnerMessage } =
+    options;
+
+  const client = getOpenAIClient();
+
+  const systemPrompt = [
+    "You classify whether a learner message during a paused lesson checkpoint should advance the lesson.",
+    "Return ONLY minified JSON.",
+    "",
+    "Valid intents:",
+    '- \"exercise_response\": the learner is attempting the requested task, reporting results, sharing observations, describing errors, outputs, or what they built. Partial attempts still count.',
+    '- \"related_question\": the learner is asking a related clarification or conceptual question without actually providing exercise results.',
+    '- \"unclear\": the message is too vague to tell.',
+    "",
+    "Rules:",
+    "- Be conservative. If the learner did not provide concrete attempt/results, do not advance.",
+    "- If the learner both reports a result and asks why, classify as exercise_response.",
+    "- Do not add prose outside the JSON.",
+    "",
+    'Output schema: {"intent":"exercise_response"|"related_question"|"unclear","reasoning"?:string}',
+  ].join("\n");
+
+  const userPrompt = [
+    `Topic: ${topic}`,
+    level ? `Level: ${level}` : undefined,
+    `Day: ${dayIndex} of ${totalDays}`,
+    `Phase: ${phase}`,
+    "",
+    "Latest assistant checkpoint message:",
+    latestAssistantMessage,
+    "",
+    "Learner message:",
+    learnerMessage,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const response = await createChatCompletion(client, {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.1,
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "";
+  if (!raw) {
+    throw new Error("Empty response from checkpoint classifier LLM");
+  }
+
+  return JSON.parse(extractJson(raw)) as CheckpointIntentResult;
+}
+
+export async function answerCheckpointSideQuestionWithLLM(options: {
+  topic: string;
+  level?: string;
+  dayIndex: number;
+  totalDays: number;
+  phase: LessonPhase;
+  latestAssistantMessage: string;
+  learnerMessage: string;
+}): Promise<string> {
+  const { topic, level, dayIndex, totalDays, phase, latestAssistantMessage, learnerMessage } =
+    options;
+
+  const client = getOpenAIClient();
+
+  const systemPrompt = [
+    "You are answering a side question asked during a paused lesson checkpoint.",
+    "Answer only the learner's question.",
+    "Stay aligned with the current lesson and current day.",
+    "Be concise and helpful.",
+    "Do not continue the lesson.",
+    "Do not produce lesson template sections or markdown section headings.",
+    "Do not say RESPONSE ANALYSIS, DEEPER EXPLANATION, or INTERACTIVE CHECKPOINT 2.",
+    "Do not assume the learner completed the exercise.",
+  ].join("\n");
+
+  const userPrompt = [
+    `Topic: ${topic}`,
+    level ? `Level: ${level}` : undefined,
+    `Day: ${dayIndex} of ${totalDays}`,
+    `Phase: ${phase}`,
+    "",
+    "Current paused checkpoint message:",
+    latestAssistantMessage,
+    "",
+    "Learner side question:",
+    learnerMessage,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const response = await createChatCompletion(client, {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.5,
   });
 
   return response.choices[0]?.message?.content?.trim() ?? "";

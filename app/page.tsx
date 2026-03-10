@@ -51,10 +51,10 @@ type AppPhase = "setup" | "chat";
 const STORAGE_KEY = "teachme:tutor-state";
 const dayOptions: SetupDays[] = [3, 5, 7];
 const minuteOptions: SetupMinutes[] = [15, 30, 45, 60];
-const levelOptions: Array<{ label: string; value: SetupLevel }> = [
-  { label: "Beginner", value: "BEGINNER" },
-  { label: "Medium", value: "INTERMEDIATE" },
-  { label: "Advanced", value: "ADVANCED" },
+const levelOptions: Array<{ label: string; value: SetupLevel; note: string }> = [
+  { label: "Beginner", value: "BEGINNER", note: "Start from first principles" },
+  { label: "Medium", value: "INTERMEDIATE", note: "Build from some familiarity" },
+  { label: "Advanced", value: "ADVANCED", note: "Move faster, focus on nuance" },
 ];
 
 function createId() {
@@ -81,6 +81,13 @@ function formatMessage(message: string) {
     .join("\n");
 }
 
+function formatLevel(level?: SetupLevel) {
+  if (level === "BEGINNER") return "Beginner";
+  if (level === "INTERMEDIATE") return "Medium";
+  if (level === "ADVANCED") return "Advanced";
+  return "";
+}
+
 function MarkdownLesson(props: { content: string }) {
   const { content } = props;
 
@@ -90,89 +97,81 @@ function MarkdownLesson(props: { content: string }) {
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => (
-            <h1 className="mt-10 text-4xl font-semibold tracking-tight text-white first:mt-0 sm:text-5xl">
+            <h1 className="mt-12 text-4xl font-semibold tracking-[-0.04em] text-white first:mt-0 sm:text-5xl lg:text-6xl">
               {children}
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mt-12 border-t border-white/8 pt-10 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+            <h2 className="mt-14 border-t border-white/10 pt-10 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mt-10 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+            <h3 className="mt-10 text-2xl font-semibold tracking-[-0.03em] text-white sm:text-3xl">
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className="mt-8 text-xl font-semibold tracking-tight text-white/95">
+            <h4 className="mt-8 text-xl font-semibold tracking-[-0.02em] text-white/94">
               {children}
             </h4>
           ),
           p: ({ children }) => (
-            <p className="mt-5 text-[1.05rem] leading-10 text-white/78 first:mt-0 sm:text-[1.15rem]">
+            <p className="mt-5 text-lg leading-9 text-white/78 first:mt-0 sm:text-[1.22rem] sm:leading-10">
               {children}
             </p>
           ),
           ul: ({ children }) => (
-            <ul className="mt-5 space-y-3 pl-6 text-[1.02rem] leading-9 text-white/76 marker:text-white/40">
+            <ul className="mt-5 space-y-3 pl-6 text-[1.04rem] leading-9 text-white/76 marker:text-cyan-200/80 sm:text-lg">
               {children}
             </ul>
           ),
           ol: ({ children }) => (
-            <ol className="mt-5 space-y-3 pl-6 text-[1.02rem] leading-9 text-white/76 marker:text-white/48">
+            <ol className="mt-5 space-y-3 pl-6 text-[1.04rem] leading-9 text-white/76 marker:text-cyan-200/80 sm:text-lg">
               {children}
             </ol>
           ),
           li: ({ children }) => <li className="pl-2">{children}</li>,
-          hr: () => <hr className="my-10 border-white/8" />,
-          strong: ({ children }) => (
-            <strong className="font-semibold text-white/96">{children}</strong>
-          ),
-          em: ({ children }) => <em className="italic text-white/86">{children}</em>,
+          hr: () => <hr className="my-12 border-white/10" />,
+          strong: ({ children }) => <strong className="font-semibold text-white">{children}</strong>,
+          em: ({ children }) => <em className="italic text-white/88">{children}</em>,
           code: ({ children, className }) => {
             const isBlock = Boolean(className);
             if (isBlock) {
               return (
-                <code className="block overflow-x-auto rounded-2xl border border-white/10 bg-black/35 px-4 py-4 font-mono text-sm text-sky-100">
+                <code className="block overflow-x-auto rounded-3xl border border-white/10 bg-black/40 px-5 py-4 font-mono text-sm text-cyan-100">
                   {children}
                 </code>
               );
             }
             return (
-              <code className="rounded-md bg-white/8 px-1.5 py-0.5 font-mono text-[0.95em] text-sky-100">
+              <code className="rounded-lg border border-white/8 bg-white/7 px-1.5 py-0.5 font-mono text-[0.92em] text-cyan-100">
                 {children}
               </code>
             );
           },
           pre: ({ children }) => (
-            <pre className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-black/35 p-4">
+            <pre className="mt-6 overflow-x-auto rounded-3xl border border-white/10 bg-black/40 p-5">
               {children}
             </pre>
           ),
           blockquote: ({ children }) => (
-            <blockquote className="mt-6 border-l-2 border-[var(--accent-dark)] pl-5 text-white/68">
+            <blockquote className="mt-8 rounded-r-3xl border-l-2 border-cyan-200/70 bg-white/[0.03] py-2 pl-5 text-white/68">
               {children}
             </blockquote>
           ),
           table: ({ children }) => (
-            <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
-              <table className="min-w-full border-collapse text-left text-sm text-white/78">
-                {children}
-              </table>
+            <div className="mt-8 overflow-x-auto rounded-3xl border border-white/10 bg-white/[0.03] shadow-[0_20px_60px_rgba(0,0,0,0.2)]">
+              <table className="min-w-full border-collapse text-left text-sm text-white/78">{children}</table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-white/[0.04] text-xs uppercase tracking-[0.16em] text-white/48">
+            <thead className="bg-white/[0.04] text-xs uppercase tracking-[0.18em] text-white/50">
               {children}
             </thead>
           ),
-          th: ({ children }) => (
-            <th className="border-b border-white/8 px-4 py-3 font-semibold">{children}</th>
-          ),
-          td: ({ children }) => (
-            <td className="border-t border-white/8 px-4 py-3 align-top">{children}</td>
-          ),
+          th: ({ children }) => <th className="border-b border-white/8 px-4 py-3 font-semibold">{children}</th>,
+          td: ({ children }) => <td className="border-t border-white/8 px-4 py-3 align-top">{children}</td>,
         }}
       >
         {content}
@@ -181,54 +180,79 @@ function MarkdownLesson(props: { content: string }) {
   );
 }
 
-function ChipButton<T extends string | number>(props: {
+function SegmentButton<T extends string | number>(props: {
   label: string;
   value: T;
+  caption?: string;
   selected?: boolean;
   onSelect: (value: T) => void;
 }) {
-  const { label, value, selected, onSelect } = props;
+  const { label, value, caption, selected, onSelect } = props;
 
   return (
     <button
       type="button"
       onClick={() => onSelect(value)}
-      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+      className={`group rounded-[1.35rem] border px-4 py-4 text-left transition sm:px-5 ${
         selected
-          ? "border-white/70 bg-white text-black"
-          : "border-white/12 bg-white/6 text-white/78 hover:border-white/24 hover:bg-white/10"
+          ? "border-cyan-200/60 bg-white text-slate-950 shadow-[0_20px_50px_rgba(190,242,255,0.2)]"
+          : "border-white/10 bg-white/[0.03] text-white/82 hover:border-white/22 hover:bg-white/[0.05]"
       }`}
     >
-      {label}
+      <div className="text-sm font-semibold uppercase tracking-[0.18em]">{label}</div>
+      {caption ? (
+        <div className={`mt-1 text-sm ${selected ? "text-slate-700" : "text-white/46"}`}>
+          {caption}
+        </div>
+      ) : null}
     </button>
+  );
+}
+
+function SetupMetricCard(props: { label: string; value: string; detail: string }) {
+  const { label, value, detail } = props;
+
+  return (
+    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5">
+      <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white/38">{label}</p>
+      <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white">{value}</p>
+      <p className="mt-2 text-sm leading-6 text-white/52">{detail}</p>
+    </div>
   );
 }
 
 function CourseLoader() {
   return (
-    <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_0%,rgba(255,255,255,0.005)_8%,rgba(255,255,255,0.018)_16%,rgba(255,255,255,0.005)_24%,rgba(255,255,255,0.018)_32%,rgba(255,255,255,0.005)_40%,rgba(255,255,255,0.018)_48%,rgba(255,255,255,0.005)_56%,rgba(255,255,255,0.018)_64%,rgba(255,255,255,0.005)_72%,rgba(255,255,255,0.018)_80%,rgba(255,255,255,0.005)_88%,rgba(255,255,255,0.018)_100%)] px-6 py-10 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:px-8 sm:py-14">
+    <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(176,230,255,0.09),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-6 py-10 shadow-[0_35px_120px_rgba(0,0,0,0.4)] sm:px-8 sm:py-14">
+      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-100/40 to-transparent" />
       <div className="mx-auto max-w-4xl space-y-10">
         <div className="space-y-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/44">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-100/55">
             Generating Course
           </p>
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-            Building your first day while the course structure is being laid out.
+          <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl">
+            Building Day 1 and shaping the rest of the curriculum in parallel.
           </h1>
           <p className="max-w-2xl text-base leading-8 text-white/58">
-            The tutor is planning the five-week path and drafting the opening lesson.
-            This usually takes a moment.
+            The tutor is drafting the opening lesson first so the app can move faster while the rest of the structure is planned.
           </p>
         </div>
 
-        <div className="space-y-4">
-          <div className="h-3 w-32 animate-pulse rounded-full bg-white/12" />
-          <div className="h-10 w-full animate-pulse rounded-full bg-white/8" />
-          <div className="h-10 w-[82%] animate-pulse rounded-full bg-white/6" />
-          <div className="h-px w-full bg-white/8" />
-          <div className="h-14 w-[68%] animate-pulse rounded-3xl bg-white/8" />
-          <div className="h-14 w-[92%] animate-pulse rounded-3xl bg-white/6" />
-          <div className="h-14 w-[76%] animate-pulse rounded-3xl bg-white/8" />
+        <div className="grid gap-4 sm:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-4 rounded-[1.75rem] border border-white/10 bg-black/20 p-5">
+            <div className="h-3 w-32 animate-pulse rounded-full bg-white/12" />
+            <div className="h-10 w-full animate-pulse rounded-full bg-white/8" />
+            <div className="h-10 w-[82%] animate-pulse rounded-full bg-white/6" />
+            <div className="h-px w-full bg-white/8" />
+            <div className="h-14 w-[68%] animate-pulse rounded-3xl bg-white/8" />
+            <div className="h-14 w-[92%] animate-pulse rounded-3xl bg-white/6" />
+            <div className="h-14 w-[76%] animate-pulse rounded-3xl bg-white/8" />
+          </div>
+          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.03] p-5">
+            <div className="h-4 w-24 animate-pulse rounded-full bg-white/12" />
+            <div className="mt-5 h-24 animate-pulse rounded-[1.5rem] bg-white/7" />
+            <div className="mt-4 h-24 animate-pulse rounded-[1.5rem] bg-white/5" />
+          </div>
         </div>
       </div>
     </section>
@@ -237,8 +261,9 @@ function CourseLoader() {
 
 function ProgressHeader(props: {
   progress: NonNullable<TutorSessionState["progress"]>;
+  setup: SetupState;
 }) {
-  const { progress } = props;
+  const { progress, setup } = props;
   const completedCount = progress.completedDayIndices.length;
   const progressPercent = Math.max(
     (completedCount / progress.totalDays) * 100,
@@ -252,28 +277,195 @@ function ProgressHeader(props: {
         : "Review complete";
 
   return (
-    <section className="mb-8 rounded-[1.5rem] border border-white/8 bg-white/[0.03] px-5 py-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <section className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-6">
+      <div className="absolute inset-y-0 left-0 w-24 bg-gradient-to-r from-cyan-200/8 to-transparent" />
+      <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
-            Progress
-          </p>
-          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Current Progress</p>
+          <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl">
             Day {progress.currentDayIndex} of {progress.totalDays}
           </h2>
-          <p className="mt-1 text-sm text-white/56">
-            {completedCount} completed{completedCount === 1 ? " day" : " days"} so far
+          <p className="mt-2 text-sm text-white/52">
+            {completedCount} completed{completedCount === 1 ? " day" : " days"} so far · {setup.daysPerWeek ?? 0} days/week · {setup.minutesPerDay ?? 0} min/day
           </p>
         </div>
-        <p className="text-xs uppercase tracking-[0.18em] text-white/42">
-          Phase: {phaseLabel}
-        </p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px]">
+          <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/38">Level</p>
+            <p className="mt-2 text-lg font-semibold text-white">{formatLevel(setup.level)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/38">Phase</p>
+            <p className="mt-2 text-lg font-semibold text-white">{phaseLabel}</p>
+          </div>
+        </div>
       </div>
-      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
+      <div className="relative mt-5 h-2 overflow-hidden rounded-full bg-white/8">
         <div
-          className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
+          className="h-full rounded-full bg-gradient-to-r from-cyan-100 to-sky-300 transition-[width] duration-500"
           style={{ width: `${progressPercent}%` }}
         />
+      </div>
+    </section>
+  );
+}
+
+function SetupScreen(props: {
+  setup: SetupState;
+  canStart: boolean;
+  isSending: boolean;
+  onTopicChange: (value: string) => void;
+  onDaysChange: (value: SetupDays) => void;
+  onMinutesChange: (value: SetupMinutes) => void;
+  onLevelChange: (value: SetupLevel) => void;
+  onStart: () => void;
+}) {
+  const {
+    setup,
+    canStart,
+    isSending,
+    onTopicChange,
+    onDaysChange,
+    onMinutesChange,
+    onLevelChange,
+    onStart,
+  } = props;
+
+  return (
+    <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(173,216,255,0.18),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-7 shadow-[0_35px_120px_rgba(0,0,0,0.35)] sm:p-8 lg:p-10">
+        <div className="absolute -left-16 top-12 h-40 w-40 rounded-full bg-cyan-200/10 blur-3xl" />
+        <div className="absolute bottom-0 right-0 h-56 w-56 rounded-full bg-sky-300/10 blur-3xl" />
+        <div className="relative space-y-10">
+          <div className="space-y-5">
+            <div className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-white/62">
+              TeachMe
+            </div>
+            <h1 className="max-w-xl text-5xl font-semibold tracking-[-0.07em] text-white sm:text-6xl">
+              A cleaner path from topic to lesson.
+            </h1>
+            <p className="max-w-lg text-lg leading-8 text-white/62">
+              Set your study rhythm once. TeachMe turns it into a paced lesson flow and starts on Day 1 immediately.
+            </p>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-3">
+            <SetupMetricCard
+              label="Format"
+              value="5 Weeks"
+              detail="A fixed-length learning path so pacing stays predictable."
+            />
+            <SetupMetricCard
+              label="Delivery"
+              value="Chat"
+              detail="The tutor writes directly into a reading-first conversation."
+            />
+            <SetupMetricCard
+              label="Structure"
+              value="Daily"
+              detail="Each day teaches, then moves into guided practice."
+            />
+          </div>
+
+          <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
+            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">What changes with the rewrite</p>
+            <ul className="mt-4 space-y-3 text-sm leading-7 text-white/60">
+              <li>Modern setup surface with explicit choices instead of a dense form.</li>
+              <li>Reading layout optimized for long lesson content rather than chat bubbles.</li>
+              <li>Cleaner progress visibility without changing the tutor behavior.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015))] p-6 shadow-[0_35px_120px_rgba(0,0,0,0.35)] sm:p-8">
+        <div className="space-y-8">
+          <div className="space-y-3">
+            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Start Here</p>
+            <h2 className="text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl">
+              Choose the topic and the pacing.
+            </h2>
+          </div>
+
+          <div className="space-y-3">
+            <label htmlFor="topic" className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+              Topic
+            </label>
+            <input
+              id="topic"
+              value={setup.topic}
+              onChange={(event) => onTopicChange(event.target.value)}
+              placeholder="Examples: vibecode, memory systems, sourdough..."
+              className="block w-full rounded-[1.5rem] border border-white/10 bg-black/20 px-5 py-4 text-lg text-white shadow-sm outline-none transition placeholder:text-white/25 focus:border-cyan-100/40 focus:bg-black/30"
+            />
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+              1. How many days you want to commit to
+            </p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {dayOptions.map((days) => (
+                <SegmentButton
+                  key={days}
+                  label={`${days} days`}
+                  caption={days === 3 ? "Lighter pace" : days === 5 ? "Steady routine" : "Daily focus"}
+                  value={days}
+                  selected={setup.daysPerWeek === days}
+                  onSelect={onDaysChange}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+              2. How many minutes per day
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {minuteOptions.map((minutes) => (
+                <SegmentButton
+                  key={minutes}
+                  label={`${minutes} min`}
+                  caption={minutes <= 30 ? "Short block" : "Deeper session"}
+                  value={minutes}
+                  selected={setup.minutesPerDay === minutes}
+                  onSelect={onMinutesChange}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">3. What level are you</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {levelOptions.map((level) => (
+                <SegmentButton
+                  key={level.value}
+                  label={level.label}
+                  caption={level.note}
+                  value={level.value}
+                  selected={setup.level === level.value}
+                  onSelect={onLevelChange}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4 border-t border-white/8 pt-6 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm leading-7 text-white/45">
+              Generation begins as soon as your setup is complete.
+            </p>
+            <button
+              type="button"
+              onClick={onStart}
+              disabled={!canStart || isSending}
+              className="inline-flex items-center justify-center rounded-full border border-cyan-100/25 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/20 disabled:text-white/40"
+            >
+              {isSending ? "Generating..." : "Start learning"}
+            </button>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -375,9 +567,7 @@ export default function Home() {
         {
           id: createId(),
           role: "assistant",
-          content: formatMessage(
-            data.assistantMessage ?? "I couldn't generate your course.",
-          ),
+          content: formatMessage(data.assistantMessage ?? "I couldn't generate your course."),
         },
       ]);
       if (data.sessionState) {
@@ -415,8 +605,7 @@ export default function Home() {
           id: createId(),
           role: "assistant",
           content: formatMessage(
-            data.assistantMessage ??
-              "I didn’t catch that. Could you rephrase your last message?",
+            data.assistantMessage ?? "I didn’t catch that. Could you rephrase your last message?",
           ),
         },
       ]);
@@ -444,202 +633,148 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
-      <header className="border-b border-white/8 bg-black/10 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
-          <div className="flex items-center gap-3">
-            <span className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/92">
+    <div className="relative min-h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(140,190,255,0.09),transparent_24%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_22%),linear-gradient(180deg,transparent,rgba(255,255,255,0.02))]" />
+
+      <header className="sticky top-0 z-20 border-b border-white/8 bg-black/20 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-6">
+          <div className="flex items-center gap-4">
+            <span className="rounded-full border border-white/12 bg-white/[0.05] px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/92">
               TeachMe
             </span>
-            <p className="text-sm text-white/52">
-              Learn in a paced, text-first flow.
-            </p>
+            <p className="hidden text-sm text-white/46 sm:block">Structured lessons in a reading-first interface.</p>
           </div>
           <button
             type="button"
             onClick={handleReset}
-            className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white/72 transition hover:border-white/22 hover:bg-white/10"
+            className="rounded-full border border-white/12 bg-white/[0.05] px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/72 transition hover:border-white/24 hover:bg-white/[0.08]"
           >
-            New chat
+            Reset
           </button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-5 py-8 sm:py-10">
+      <main className="relative mx-auto max-w-7xl px-5 py-8 sm:px-6 sm:py-10 lg:py-12">
         {phase === "setup" ? (
-          <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.015))] px-6 py-7 shadow-[0_30px_120px_rgba(0,0,0,0.35)] sm:px-8 sm:py-10">
-            <div className="max-w-4xl space-y-10">
-              <div className="space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/44">
-                  Course Setup
-                </p>
-                <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
-                  Choose the topic, pace, and level. The tutor will start generating immediately.
-                </h1>
-                <p className="max-w-2xl text-base leading-8 text-white/58">
-                  No confirmation step. Once your setup is complete, the course outline
-                  and first lesson will appear directly in the reading view.
-                </p>
-              </div>
-
-              <div className="space-y-8">
-                <div className="space-y-3">
-                  <label
-                    htmlFor="topic"
-                    className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42"
-                  >
-                    Topic
-                  </label>
-                  <input
-                    id="topic"
-                    value={setup.topic}
-                    onChange={(event) =>
-                      setSetup((current) => ({ ...current, topic: event.target.value }))
-                    }
-                    placeholder="Examples: vibecode, memory systems, sourdough..."
-                    className="block w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4 text-lg text-white shadow-sm outline-none transition placeholder:text-white/25 focus:border-white/22 focus:bg-white/[0.06]"
-                  />
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
-                    1. How many days you want to commit to
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {dayOptions.map((days) => (
-                      <ChipButton
-                        key={days}
-                        label={`${days} days`}
-                        value={days}
-                        selected={setup.daysPerWeek === days}
-                        onSelect={(value) =>
-                          setSetup((current) => ({ ...current, daysPerWeek: value }))
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
-                    2. How many minutes per day
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {minuteOptions.map((minutes) => (
-                      <ChipButton
-                        key={minutes}
-                        label={`${minutes} min`}
-                        value={minutes}
-                        selected={setup.minutesPerDay === minutes}
-                        onSelect={(value) =>
-                          setSetup((current) => ({ ...current, minutesPerDay: value }))
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
-                    3. What level are you
-                  </p>
-                  <div className="flex flex-wrap gap-3">
-                    {levelOptions.map((level) => (
-                      <ChipButton
-                        key={level.value}
-                        label={level.label}
-                        value={level.value}
-                        selected={setup.level === level.value}
-                        onSelect={(value) =>
-                          setSetup((current) => ({ ...current, level: value }))
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-white/8 pt-6">
-                <button
-                  type="button"
-                  onClick={handleStart}
-                  disabled={!canStart || isSending}
-                  className="inline-flex items-center justify-center rounded-full border border-white/18 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/20 disabled:text-white/40"
-                >
-                  {isSending ? "Generating..." : "Start learning"}
-                </button>
-              </div>
-            </div>
-          </section>
+          <SetupScreen
+            setup={setup}
+            canStart={canStart}
+            isSending={isSending}
+            onTopicChange={(value) => setSetup((current) => ({ ...current, topic: value }))}
+            onDaysChange={(value) => setSetup((current) => ({ ...current, daysPerWeek: value }))}
+            onMinutesChange={(value) => setSetup((current) => ({ ...current, minutesPerDay: value }))}
+            onLevelChange={(value) => setSetup((current) => ({ ...current, level: value }))}
+            onStart={handleStart}
+          />
         ) : isSending && messages.length === 0 ? (
           <CourseLoader />
         ) : (
-          <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_0%,rgba(255,255,255,0.005)_8%,rgba(255,255,255,0.018)_16%,rgba(255,255,255,0.005)_24%,rgba(255,255,255,0.018)_32%,rgba(255,255,255,0.005)_40%,rgba(255,255,255,0.018)_48%,rgba(255,255,255,0.005)_56%,rgba(255,255,255,0.018)_64%,rgba(255,255,255,0.005)_72%,rgba(255,255,255,0.018)_80%,rgba(255,255,255,0.005)_88%,rgba(255,255,255,0.018)_100%)] px-6 py-7 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:px-8 sm:py-10">
-            {sessionState.progress ? <ProgressHeader progress={sessionState.progress} /> : null}
-
-            <div className="space-y-10">
-              {messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={`${
-                    message.role === "assistant"
-                      ? "border-b border-white/8 pb-10 text-white/82"
-                      : "ml-auto max-w-3xl rounded-3xl border border-white/10 bg-white/8 px-5 py-4 text-white"
-                  }`}
-                >
-                  {message.role === "assistant" ? (
-                    <div className="max-w-5xl">
-                      <MarkdownLesson content={message.content} />
-                    </div>
-                  ) : (
-                    <p className="whitespace-pre-wrap text-base leading-8">{message.content}</p>
-                  )}
-                </article>
-              ))}
-
-              {isSending ? (
-                <div className="border-b border-white/8 pb-10 text-[1.05rem] leading-10 text-white/55 sm:text-[1.15rem]">
-                  Writing the next part of your lesson...
-                </div>
-              ) : null}
-
-              <div ref={endRef} />
-            </div>
-
-            {error ? (
-              <div className="mt-6 rounded-2xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
-                {error}
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
+            <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] shadow-[0_35px_120px_rgba(0,0,0,0.45)]">
+              <div className="border-b border-white/8 px-6 py-5 sm:px-8">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Current Lesson</p>
+                <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl">
+                  {setup.topic.trim() || "Your course"}
+                </h1>
               </div>
-            ) : null}
 
-            <div className="mt-8 border-t border-white/8 pt-6">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="flex-1">
-                  <label
-                    htmlFor="chat-input"
-                    className="text-xs font-semibold uppercase tracking-[0.18em] text-white/42"
-                  >
+              <div className="px-6 py-7 sm:px-8 sm:py-8">
+                {sessionState.progress ? <ProgressHeader progress={sessionState.progress} setup={setup} /> : null}
+
+                <div className="mt-8 space-y-12">
+                  {messages.map((message) => (
+                    <article
+                      key={message.id}
+                      className={message.role === "assistant" ? "border-b border-white/8 pb-12" : "ml-auto max-w-3xl"}
+                    >
+                      {message.role === "assistant" ? (
+                        <div className="max-w-5xl">
+                          <MarkdownLesson content={message.content} />
+                        </div>
+                      ) : (
+                        <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.05] px-5 py-4 shadow-[0_20px_50px_rgba(0,0,0,0.2)]">
+                          <p className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-white/38">You</p>
+                          <p className="mt-3 whitespace-pre-wrap text-base leading-8 text-white/88">{message.content}</p>
+                        </div>
+                      )}
+                    </article>
+                  ))}
+
+                  {isSending ? (
+                    <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.03] px-5 py-4 text-lg leading-9 text-white/55">
+                      Writing the next part of your lesson...
+                    </div>
+                  ) : null}
+
+                  <div ref={endRef} />
+                </div>
+
+                {error ? (
+                  <div className="mt-8 rounded-[1.5rem] border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-100">
+                    {error}
+                  </div>
+                ) : null}
+
+                <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-black/15 p-4 sm:p-5">
+                  <label htmlFor="chat-input" className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-white/38">
                     Continue the conversation
                   </label>
-                  <textarea
-                    id="chat-input"
-                    value={input}
-                    onChange={(event) => setInput(event.target.value)}
-                    rows={3}
-                    placeholder="Share your result, ask a question, or say what happened..."
-                    className="mt-2 block w-full rounded-3xl border border-white/10 bg-white/[0.04] px-5 py-4 text-base text-white outline-none transition placeholder:text-white/25 focus:border-white/22 focus:bg-white/[0.06]"
-                  />
+                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <textarea
+                      id="chat-input"
+                      value={input}
+                      onChange={(event) => setInput(event.target.value)}
+                      rows={3}
+                      placeholder="Share your result, ask a question, or describe what happened..."
+                      className="min-h-[132px] flex-1 rounded-[1.5rem] border border-white/10 bg-white/[0.03] px-5 py-4 text-base text-white outline-none transition placeholder:text-white/24 focus:border-cyan-100/40 focus:bg-white/[0.05]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!canSend}
+                      className="inline-flex h-14 items-center justify-center rounded-full border border-cyan-100/20 bg-white px-6 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
+                    >
+                      Send
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleSend}
-                  disabled={!canSend}
-                  className="inline-flex items-center justify-center rounded-full border border-white/14 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
-                >
-                  Send
-                </button>
               </div>
             </div>
+
+            <aside className="space-y-6 xl:sticky xl:top-24">
+              <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 shadow-[0_25px_80px_rgba(0,0,0,0.25)]">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Study Setup</p>
+                <div className="mt-5 grid gap-4">
+                  <div>
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/36">Topic</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{setup.topic.trim()}</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
+                      <p className="text-[0.64rem] font-semibold uppercase tracking-[0.18em] text-white/36">Days</p>
+                      <p className="mt-2 text-xl font-semibold text-white">{setup.daysPerWeek}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
+                      <p className="text-[0.64rem] font-semibold uppercase tracking-[0.18em] text-white/36">Minutes</p>
+                      <p className="mt-2 text-xl font-semibold text-white">{setup.minutesPerDay}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
+                    <p className="text-[0.64rem] font-semibold uppercase tracking-[0.18em] text-white/36">Level</p>
+                    <p className="mt-2 text-xl font-semibold text-white">{formatLevel(setup.level)}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.025] p-5 shadow-[0_25px_80px_rgba(0,0,0,0.25)]">
+                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">How To Use It</p>
+                <ul className="mt-4 space-y-3 text-sm leading-7 text-white/58">
+                  <li>Respond after each checkpoint with what you built or what broke.</li>
+                  <li>Use short factual answers if you want the tutor to move faster.</li>
+                  <li>Reset if you want to start a different topic or pacing.</li>
+                </ul>
+              </div>
+            </aside>
           </section>
         )}
       </main>
