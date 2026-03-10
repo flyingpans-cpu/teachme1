@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type ChatMessage = {
   id: string;
@@ -70,6 +72,106 @@ function formatMessage(message: string) {
     .join("\n");
 }
 
+function MarkdownLesson(props: { content: string }) {
+  const { content } = props;
+
+  return (
+    <div className="markdown-lesson">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          h1: ({ children }) => (
+            <h1 className="mt-10 text-4xl font-semibold tracking-tight text-white first:mt-0 sm:text-5xl">
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="mt-12 border-t border-white/8 pt-10 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="mt-10 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+              {children}
+            </h3>
+          ),
+          h4: ({ children }) => (
+            <h4 className="mt-8 text-xl font-semibold tracking-tight text-white/95">
+              {children}
+            </h4>
+          ),
+          p: ({ children }) => (
+            <p className="mt-5 text-[1.05rem] leading-10 text-white/78 first:mt-0 sm:text-[1.15rem]">
+              {children}
+            </p>
+          ),
+          ul: ({ children }) => (
+            <ul className="mt-5 space-y-3 pl-6 text-[1.02rem] leading-9 text-white/76 marker:text-white/40">
+              {children}
+            </ul>
+          ),
+          ol: ({ children }) => (
+            <ol className="mt-5 space-y-3 pl-6 text-[1.02rem] leading-9 text-white/76 marker:text-white/48">
+              {children}
+            </ol>
+          ),
+          li: ({ children }) => <li className="pl-2">{children}</li>,
+          hr: () => <hr className="my-10 border-white/8" />,
+          strong: ({ children }) => (
+            <strong className="font-semibold text-white/96">{children}</strong>
+          ),
+          em: ({ children }) => <em className="italic text-white/86">{children}</em>,
+          code: ({ children, className }) => {
+            const isBlock = Boolean(className);
+            if (isBlock) {
+              return (
+                <code className="block overflow-x-auto rounded-2xl border border-white/10 bg-black/35 px-4 py-4 font-mono text-sm text-sky-100">
+                  {children}
+                </code>
+              );
+            }
+            return (
+              <code className="rounded-md bg-white/8 px-1.5 py-0.5 font-mono text-[0.95em] text-sky-100">
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children }) => (
+            <pre className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-black/35 p-4">
+              {children}
+            </pre>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="mt-6 border-l-2 border-[var(--accent-dark)] pl-5 text-white/68">
+              {children}
+            </blockquote>
+          ),
+          table: ({ children }) => (
+            <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 bg-white/[0.03]">
+              <table className="min-w-full border-collapse text-left text-sm text-white/78">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-white/[0.04] text-xs uppercase tracking-[0.16em] text-white/48">
+              {children}
+            </thead>
+          ),
+          th: ({ children }) => (
+            <th className="border-b border-white/8 px-4 py-3 font-semibold">{children}</th>
+          ),
+          td: ({ children }) => (
+            <td className="border-t border-white/8 px-4 py-3 align-top">{children}</td>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
 function ChipButton<T extends string | number>(props: {
   label: string;
   value: T;
@@ -90,6 +192,37 @@ function ChipButton<T extends string | number>(props: {
     >
       {label}
     </button>
+  );
+}
+
+function CourseLoader() {
+  return (
+    <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_0%,rgba(255,255,255,0.005)_8%,rgba(255,255,255,0.018)_16%,rgba(255,255,255,0.005)_24%,rgba(255,255,255,0.018)_32%,rgba(255,255,255,0.005)_40%,rgba(255,255,255,0.018)_48%,rgba(255,255,255,0.005)_56%,rgba(255,255,255,0.018)_64%,rgba(255,255,255,0.005)_72%,rgba(255,255,255,0.018)_80%,rgba(255,255,255,0.005)_88%,rgba(255,255,255,0.018)_100%)] px-6 py-10 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:px-8 sm:py-14">
+      <div className="mx-auto max-w-4xl space-y-10">
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/44">
+            Generating Course
+          </p>
+          <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+            Building your first day while the course structure is being laid out.
+          </h1>
+          <p className="max-w-2xl text-base leading-8 text-white/58">
+            The tutor is planning the five-week path and drafting the opening lesson.
+            This usually takes a moment.
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          <div className="h-3 w-32 animate-pulse rounded-full bg-white/12" />
+          <div className="h-10 w-full animate-pulse rounded-full bg-white/8" />
+          <div className="h-10 w-[82%] animate-pulse rounded-full bg-white/6" />
+          <div className="h-px w-full bg-white/8" />
+          <div className="h-14 w-[68%] animate-pulse rounded-3xl bg-white/8" />
+          <div className="h-14 w-[92%] animate-pulse rounded-3xl bg-white/6" />
+          <div className="h-14 w-[76%] animate-pulse rounded-3xl bg-white/8" />
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -385,6 +518,8 @@ export default function Home() {
               </div>
             </div>
           </section>
+        ) : isSending && messages.length === 0 ? (
+          <CourseLoader />
         ) : (
           <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_0%,rgba(255,255,255,0.005)_8%,rgba(255,255,255,0.018)_16%,rgba(255,255,255,0.005)_24%,rgba(255,255,255,0.018)_32%,rgba(255,255,255,0.005)_40%,rgba(255,255,255,0.018)_48%,rgba(255,255,255,0.005)_56%,rgba(255,255,255,0.018)_64%,rgba(255,255,255,0.005)_72%,rgba(255,255,255,0.018)_80%,rgba(255,255,255,0.005)_88%,rgba(255,255,255,0.018)_100%)] px-6 py-7 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:px-8 sm:py-10">
             <div className="mb-8 border-b border-white/8 pb-6">
@@ -407,8 +542,8 @@ export default function Home() {
                   }`}
                 >
                   {message.role === "assistant" ? (
-                    <div className="max-w-5xl whitespace-pre-wrap text-[1.05rem] leading-10 sm:text-[1.15rem]">
-                      {message.content}
+                    <div className="max-w-5xl">
+                      <MarkdownLesson content={message.content} />
                     </div>
                   ) : (
                     <p className="whitespace-pre-wrap text-base leading-8">{message.content}</p>
