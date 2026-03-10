@@ -23,12 +23,21 @@ type SetupState = {
 
 type TutorSessionState = {
   stage?: "confirm" | "generated";
+  courseId?: string;
   captured?: {
     topic?: string;
     level?: SetupLevel;
     hoursPerWeek?: number;
     sessionsPerWeek?: number;
     preferredSessionLengthMinutes?: number;
+  };
+  progress?: {
+    courseId?: string;
+    currentDayIndex: number;
+    currentPhase: "initial" | "afterCheckpoint1" | "afterCheckpoint2";
+    completedDayIndices: number[];
+    totalDays: number;
+    lastViewedAt: string;
   };
   lessonState?: {
     dayIndex: number;
@@ -226,6 +235,50 @@ function CourseLoader() {
   );
 }
 
+function ProgressHeader(props: {
+  progress: NonNullable<TutorSessionState["progress"]>;
+}) {
+  const { progress } = props;
+  const completedCount = progress.completedDayIndices.length;
+  const progressPercent = Math.max(
+    (completedCount / progress.totalDays) * 100,
+    (1 / progress.totalDays) * 100,
+  );
+  const phaseLabel =
+    progress.currentPhase === "initial"
+      ? "In lesson"
+      : progress.currentPhase === "afterCheckpoint1"
+        ? "Checkpoint 2"
+        : "Review complete";
+
+  return (
+    <section className="mb-8 rounded-[1.5rem] border border-white/8 bg-white/[0.03] px-5 py-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-white/42">
+            Progress
+          </p>
+          <h2 className="mt-2 text-2xl font-semibold tracking-tight text-white">
+            Day {progress.currentDayIndex} of {progress.totalDays}
+          </h2>
+          <p className="mt-1 text-sm text-white/56">
+            {completedCount} completed{completedCount === 1 ? " day" : " days"} so far
+          </p>
+        </div>
+        <p className="text-xs uppercase tracking-[0.18em] text-white/42">
+          Phase: {phaseLabel}
+        </p>
+      </div>
+      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/8">
+        <div
+          className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-500"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const [phase, setPhase] = useState<AppPhase>("setup");
   const [setup, setSetup] = useState<SetupState>({ topic: "" });
@@ -396,7 +449,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
           <div className="flex items-center gap-3">
             <span className="rounded-full border border-white/12 bg-white/6 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-white/92">
-              TeachMe Tutor
+              TeachMe
             </span>
             <p className="text-sm text-white/52">
               Learn in a paced, text-first flow.
@@ -522,14 +575,7 @@ export default function Home() {
           <CourseLoader />
         ) : (
           <section className="rounded-[2rem] border border-white/8 bg-[linear-gradient(90deg,rgba(255,255,255,0.018)_0%,rgba(255,255,255,0.005)_8%,rgba(255,255,255,0.018)_16%,rgba(255,255,255,0.005)_24%,rgba(255,255,255,0.018)_32%,rgba(255,255,255,0.005)_40%,rgba(255,255,255,0.018)_48%,rgba(255,255,255,0.005)_56%,rgba(255,255,255,0.018)_64%,rgba(255,255,255,0.005)_72%,rgba(255,255,255,0.018)_80%,rgba(255,255,255,0.005)_88%,rgba(255,255,255,0.018)_100%)] px-6 py-7 shadow-[0_30px_120px_rgba(0,0,0,0.45)] sm:px-8 sm:py-10">
-            <div className="mb-8 border-b border-white/8 pb-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-white/44">
-                Generated Session
-              </p>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                Your tutor is writing directly into the lesson view.
-              </h1>
-            </div>
+            {sessionState.progress ? <ProgressHeader progress={sessionState.progress} /> : null}
 
             <div className="space-y-10">
               {messages.map((message) => (

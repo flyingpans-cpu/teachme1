@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { CourseRequestSchema, GeneratedCourseSchema } from "@/app/lib/courseSchema";
+import {
+  buildProgressSnapshot,
+  saveCourseProgressIfPossible,
+} from "@/app/lib/courseProgress";
 import { saveCourseIfPossible } from "@/app/lib/coursePersistence";
 import { buildTimeAllocation } from "@/app/lib/timeAllocation";
 import {
@@ -21,6 +25,7 @@ const TutorLessonStateSchema = z.object({
 
 const TutorSessionStateSchema = z.object({
   stage: z.enum(["confirm", "generated"]).optional(),
+  courseId: z.string().optional(),
   captured: z
     .object({
       topic: z.string().optional(),
@@ -28,6 +33,16 @@ const TutorSessionStateSchema = z.object({
       hoursPerWeek: z.number().optional(),
       sessionsPerWeek: z.number().int().optional(),
       preferredSessionLengthMinutes: z.number().int().optional(),
+    })
+    .optional(),
+  progress: z
+    .object({
+      courseId: z.string().optional(),
+      currentDayIndex: z.number().int().min(1),
+      currentPhase: z.enum(["initial", "afterCheckpoint1", "afterCheckpoint2"]),
+      completedDayIndices: z.array(z.number().int().min(1)),
+      totalDays: z.number().int().min(1),
+      lastViewedAt: z.string(),
     })
     .optional(),
   lessonState: TutorLessonStateSchema.optional(),
@@ -45,20 +60,6 @@ function getLastUserMessage(messages: Array<z.infer<typeof TutorMessageSchema>>)
     }
   }
   return "";
-}
-
-function buildPlanSummary(course: z.infer<typeof GeneratedCourseSchema>) {
-  const weeks = course.weeks.slice().sort((a, b) => a.weekIndex - b.weekIndex);
-  const lines = [
-    `Here is your 5-week plan: ${course.courseTitle}`,
-    course.overview,
-    "",
-    ...weeks.map((week) => {
-      const minutes = week.targetMinutes;
-      return `Week ${week.weekIndex}: ${week.title} — ${week.summary} (${minutes} minutes)`;
-    }),
-  ];
-  return lines.join("\n");
 }
 
 function buildStyleSummary() {
@@ -106,10 +107,21 @@ export async function POST(request: Request) {
             exerciseResponse: lastUserMessage,
           });
 
+          const progress = await saveCourseProgressIfPossible(
+            buildProgressSnapshot({
+              courseId: existingState.courseId,
+              currentDayIndex: dayIndex,
+              currentPhase: "afterCheckpoint1",
+              completedDayIndices: existingState.progress?.completedDayIndices ?? [],
+              totalDays,
+            }),
+          );
+
           return NextResponse.json({
             assistantMessage: chunk,
             sessionState: {
               ...existingState,
+              progress,
               lessonState: {
                 ...lessonState,
                 phase: "afterCheckpoint1",
@@ -130,10 +142,24 @@ export async function POST(request: Request) {
             exerciseResponse: lastUserMessage,
           });
 
+          const completedDays = Array.from(
+            new Set([...(existingState.progress?.completedDayIndices ?? []), dayIndex]),
+          ).sort((a, b) => a - b);
+          const progress = await saveCourseProgressIfPossible(
+            buildProgressSnapshot({
+              courseId: existingState.courseId,
+              currentDayIndex: dayIndex,
+              currentPhase: "afterCheckpoint2",
+              completedDayIndices: completedDays,
+              totalDays,
+            }),
+          );
+
           return NextResponse.json({
             assistantMessage: chunk,
             sessionState: {
               ...existingState,
+              progress,
               lessonState: {
                 ...lessonState,
                 phase: "afterCheckpoint2",
@@ -164,10 +190,21 @@ export async function POST(request: Request) {
         phase: "initial",
       });
 
+      const progress = await saveCourseProgressIfPossible(
+        buildProgressSnapshot({
+          courseId: existingState.courseId,
+          currentDayIndex: nextDayIndex,
+          currentPhase: "initial",
+          completedDayIndices: existingState.progress?.completedDayIndices ?? [],
+          totalDays,
+        }),
+      );
+
       return NextResponse.json({
         assistantMessage: chunk,
         sessionState: {
           ...existingState,
+          progress,
           lessonState: {
             dayIndex: nextDayIndex,
             phase: "initial",
@@ -241,13 +278,23 @@ export async function POST(request: Request) {
         week.targetMinutes = weekMinutes;
       }
 
-      const planMessage = buildPlanSummary(validated);
+      const course = await saveCourseIfPossible(requestInput, validated);
+      const progress = await saveCourseProgressIfPossible(
+        buildProgressSnapshot({
+          courseId: course.id,
+          currentDayIndex: 1,
+          currentPhase: "initial",
+          completedDayIndices: [],
+          totalDays,
+        }),
+      );
 
       return NextResponse.json({
-        assistantMessage: `${planMessage}\n\n${firstLesson}`,
-        course: await saveCourseIfPossible(requestInput, validated),
+        assistantMessage: firstLesson,
+        course,
         sessionState: {
           stage: "generated",
+          courseId: course.id,
           captured: {
             topic: requestInput.topic,
             level: requestInput.level,
@@ -255,6 +302,7 @@ export async function POST(request: Request) {
             sessionsPerWeek: requestInput.sessionsPerWeek,
             preferredSessionLengthMinutes: requestInput.preferredSessionLengthMinutes,
           },
+          progress,
           lessonState: {
             dayIndex: 1,
             phase: "initial",

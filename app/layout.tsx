@@ -13,7 +13,7 @@ const jetBrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TeachMe Tutor",
+  title: "TeachMe",
   description: "A chat-first tutor that builds time-boxed learning plans.",
 };
 

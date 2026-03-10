@@ -33,6 +33,7 @@ model Course {
 
   courseWeeks Week[]
   logs        PromptLog[]
+  progress    CourseProgress?
 }
 
 model Week {
@@ -70,6 +71,17 @@ model PromptLog {
   createdAt DateTime @default(now())
 }
 
+model CourseProgress {
+  id                  String        @id @default(cuid())
+  courseId            String        @unique
+  course              Course        @relation(fields: [courseId], references: [id])
+  currentDayIndex     Int
+  currentPhase        ProgressPhase
+  completedDayIndices Json
+  totalDays           Int
+  lastViewedAt        DateTime      @default(now())
+}
+
 enum Level {
   BEGINNER
   INTERMEDIATE
@@ -81,4 +93,10 @@ enum ActivityType {
   PRACTICE
   QUIZ
   MIXED
+}
+
+enum ProgressPhase {
+  INITIAL
+  AFTER_CHECKPOINT_1
+  AFTER_CHECKPOINT_2
 }
