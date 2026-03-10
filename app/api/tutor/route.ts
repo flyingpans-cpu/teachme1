@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import {
-  CourseRequestSchema,
-  GeneratedCourseSchema,
-  StylePreferencesSchema,
-} from "@/app/lib/courseSchema";
+import { CourseRequestSchema, GeneratedCourseSchema } from "@/app/lib/courseSchema";
 import { saveCourseIfPossible } from "@/app/lib/coursePersistence";
 import { buildTimeAllocation } from "@/app/lib/timeAllocation";
 import {
   generateCourseOutlineWithLLM,
   generateLessonChunkWithLLM,
-  runTutorIntakeWithLLM,
 } from "@/app/lib/llmPrompt";
 
 const TutorMessageSchema = z.object({
@@ -25,16 +20,14 @@ const TutorLessonStateSchema = z.object({
 });
 
 const TutorSessionStateSchema = z.object({
-  stage: z.enum(["intake", "confirm", "generated"]).optional(),
+  stage: z.enum(["confirm", "generated"]).optional(),
   captured: z
     .object({
       topic: z.string().optional(),
       level: z.enum(["BEGINNER", "INTERMEDIATE", "ADVANCED"]).optional(),
-      priorKnowledge: z.string().optional(),
       hoursPerWeek: z.number().optional(),
       sessionsPerWeek: z.number().int().optional(),
       preferredSessionLengthMinutes: z.number().int().optional(),
-      stylePreferences: StylePreferencesSchema.partial().optional(),
     })
     .optional(),
   lessonState: TutorLessonStateSchema.optional(),
@@ -54,14 +47,10 @@ function getLastUserMessage(messages: Array<z.infer<typeof TutorMessageSchema>>)
   return "";
 }
 
-function buildStyleSummary(style?: z.infer<typeof StylePreferencesSchema>) {
-  if (!style) return "";
-  const parts: string[] = [];
-  if (style.morePractice) parts.push("more practice");
-  if (style.moreTheory) parts.push("more theory");
-  if (style.preferReading) parts.push("prefer reading");
-  if (style.preferVideos) parts.push("prefer videos");
-  return parts.join(", ");
+function isAffirmative(value: string) {
+  return /^(yes|y|confirm|confirmed|looks good|good|correct|sure|ok|okay)$/i.test(
+    value.trim(),
+  );
 }
 
 function buildPlanSummary(course: z.infer<typeof GeneratedCourseSchema>) {
@@ -76,6 +65,10 @@ function buildPlanSummary(course: z.infer<typeof GeneratedCourseSchema>) {
     }),
   ];
   return lines.join("\n");
+}
+
+function buildStyleSummary() {
+  return "";
 }
 
 export async function POST(request: Request) {
@@ -112,7 +105,6 @@ export async function POST(request: Request) {
           const chunk = await generateLessonChunkWithLLM({
             topic: captured.topic ?? "",
             level: captured.level,
-            priorKnowledge: captured.priorKnowledge,
             dayIndex,
             totalDays,
             minutesPerDay: currentSession.targetMinutes,
@@ -137,7 +129,6 @@ export async function POST(request: Request) {
           const chunk = await generateLessonChunkWithLLM({
             topic: captured.topic ?? "",
             level: captured.level,
-            priorKnowledge: captured.priorKnowledge,
             dayIndex,
             totalDays,
             minutesPerDay: currentSession.targetMinutes,
@@ -159,18 +150,9 @@ export async function POST(request: Request) {
         }
       }
 
-      const wantsNextDay =
-        /next|continue|day\s+\d+/i.test(lastUserMessage) || lastUserMessage.length > 0;
-
-      if (!wantsNextDay) {
-        return NextResponse.json({
-          assistantMessage: "Say “next day” when you’re ready to continue.",
-          sessionState: existingState,
-        });
-      }
-
       const nextDayIndex = lessonState.phase === "afterCheckpoint2" ? dayIndex + 1 : dayIndex;
       const nextSession = allocation.sessions[nextDayIndex - 1];
+
       if (!nextSession) {
         return NextResponse.json({
           assistantMessage:
@@ -182,7 +164,6 @@ export async function POST(request: Request) {
       const chunk = await generateLessonChunkWithLLM({
         topic: captured.topic ?? "",
         level: captured.level,
-        priorKnowledge: captured.priorKnowledge,
         dayIndex: nextDayIndex,
         totalDays,
         minutesPerDay: nextSession.targetMinutes,
@@ -202,117 +183,105 @@ export async function POST(request: Request) {
       });
     }
 
-    const capturedForIntake: Partial<
-      z.infer<typeof CourseRequestSchema>
-    > = {
-      ...captured,
-      stylePreferences: captured.stylePreferences
-        ? {
-            morePractice: captured.stylePreferences.morePractice ?? false,
-            moreTheory: captured.stylePreferences.moreTheory ?? false,
-            preferReading: captured.stylePreferences.preferReading ?? false,
-            preferVideos: captured.stylePreferences.preferVideos ?? false,
+    if (existingState.stage === "confirm") {
+      if (!isAffirmative(lastUserMessage)) {
+        return NextResponse.json({
+          assistantMessage:
+            "Use `New chat` to change your setup, then reply `yes` when you're ready for me to generate the course.",
+          sessionState: existingState,
+        });
+      }
+
+      const requestInput = CourseRequestSchema.parse({
+        topic: captured.topic,
+        level: captured.level,
+        weeks: 5,
+        hoursPerWeek: captured.hoursPerWeek,
+        sessionsPerWeek: captured.sessionsPerWeek,
+        preferredSessionLengthMinutes: captured.preferredSessionLengthMinutes,
+        stylePreferences: {
+          morePractice: false,
+          moreTheory: false,
+          preferReading: false,
+          preferVideos: false,
+        },
+      });
+
+      const allocation = buildTimeAllocation({
+        weeks: requestInput.weeks,
+        hoursPerWeek: requestInput.hoursPerWeek,
+        sessionsPerWeek: requestInput.sessionsPerWeek,
+        preferredSessionLengthMinutes: requestInput.preferredSessionLengthMinutes,
+      });
+
+      const outline = await generateCourseOutlineWithLLM({
+        topic: requestInput.topic,
+        level: requestInput.level,
+        styleSummary: buildStyleSummary(),
+        sessions: allocation.sessions,
+        minutesPerWeek: allocation.minutesPerWeek,
+      });
+
+      const validated = GeneratedCourseSchema.parse(outline);
+      const minutesByKey = new Map<string, number>();
+
+      for (const session of allocation.sessions) {
+        minutesByKey.set(`${session.weekIndex}-${session.sessionIndex}`, session.targetMinutes);
+      }
+
+      for (const week of validated.weeks) {
+        let weekMinutes = 0;
+        for (const session of week.sessions) {
+          const expected = minutesByKey.get(`${session.weekIndex}-${session.sessionIndex}`);
+          if (!expected) {
+            throw new Error("LLM produced a session not present in the allocation skeleton");
           }
-        : undefined,
-    };
-    const intakeResult = await runTutorIntakeWithLLM({
-      userMessage: lastUserMessage,
-      captured: capturedForIntake,
-    });
+          session.estimatedMinutes = expected;
+          session.targetMinutes = expected;
+          weekMinutes += expected;
+        }
+        week.targetMinutes = weekMinutes;
+      }
 
-    const mergedCaptured = {
-      ...captured,
-      ...intakeResult.captured,
-      stylePreferences: {
-        morePractice: false,
-        moreTheory: false,
-        preferReading: false,
-        preferVideos: false,
-        ...(captured.stylePreferences ?? {}),
-        ...(intakeResult.captured.stylePreferences ?? {}),
-      },
-    };
+      const planMessage = buildPlanSummary(validated);
+      const totalDays = allocation.sessions.length;
+      const firstSession = allocation.sessions[0];
+      const firstLesson = await generateLessonChunkWithLLM({
+        topic: requestInput.topic,
+        level: requestInput.level,
+        dayIndex: 1,
+        totalDays,
+        minutesPerDay: firstSession?.targetMinutes ?? allocation.minutesPerWeek,
+        phase: "initial",
+      });
 
-    if (!intakeResult.readyToGenerate) {
       return NextResponse.json({
-        assistantMessage: intakeResult.assistantMessage,
+        assistantMessage: `${planMessage}\n\n${firstLesson}`,
+        course: await saveCourseIfPossible(requestInput, validated),
         sessionState: {
-          stage: intakeResult.stage,
-          captured: mergedCaptured,
+          stage: "generated",
+          captured: {
+            topic: requestInput.topic,
+            level: requestInput.level,
+            hoursPerWeek: requestInput.hoursPerWeek,
+            sessionsPerWeek: requestInput.sessionsPerWeek,
+            preferredSessionLengthMinutes: requestInput.preferredSessionLengthMinutes,
+          },
+          lessonState: {
+            dayIndex: 1,
+            phase: "initial",
+            awaitingResponse: true,
+          },
         },
       });
     }
 
-    const requestInput = CourseRequestSchema.parse({
-      ...mergedCaptured,
-      weeks: 5,
-      stylePreferences: mergedCaptured.stylePreferences,
-    });
-
-    const allocation = buildTimeAllocation({
-      weeks: requestInput.weeks,
-      hoursPerWeek: requestInput.hoursPerWeek,
-      sessionsPerWeek: requestInput.sessionsPerWeek,
-      preferredSessionLengthMinutes: requestInput.preferredSessionLengthMinutes,
-    });
-
-    const outline = await generateCourseOutlineWithLLM({
-      topic: requestInput.topic,
-      level: requestInput.level,
-      priorKnowledge: requestInput.priorKnowledge,
-      styleSummary: buildStyleSummary(requestInput.stylePreferences),
-      sessions: allocation.sessions,
-      minutesPerWeek: allocation.minutesPerWeek,
-    });
-
-    const validated = GeneratedCourseSchema.parse(outline);
-
-    const minutesByKey = new Map<string, number>();
-    for (const session of allocation.sessions) {
-      minutesByKey.set(`${session.weekIndex}-${session.sessionIndex}`, session.targetMinutes);
-    }
-
-    for (const week of validated.weeks) {
-      let weekMinutes = 0;
-      for (const session of week.sessions) {
-        const expected = minutesByKey.get(`${session.weekIndex}-${session.sessionIndex}`);
-        if (!expected) {
-          throw new Error("LLM produced a session not present in the allocation skeleton");
-        }
-        session.estimatedMinutes = expected;
-        session.targetMinutes = expected;
-        weekMinutes += expected;
-      }
-      week.targetMinutes = weekMinutes;
-    }
-
-    const planMessage = buildPlanSummary(validated);
-    const firstSession = allocation.sessions[0];
-    const totalDays = allocation.sessions.length;
-
-    const firstLesson = await generateLessonChunkWithLLM({
-      topic: requestInput.topic,
-      level: requestInput.level,
-      priorKnowledge: requestInput.priorKnowledge,
-      dayIndex: 1,
-      totalDays,
-      minutesPerDay: firstSession?.targetMinutes ?? allocation.minutesPerWeek,
-      phase: "initial",
-    });
-
-    return NextResponse.json({
-      assistantMessage: `${planMessage}\n\n${firstLesson}`,
-      course: await saveCourseIfPossible(requestInput, validated),
-      sessionState: {
-        stage: "generated",
-        captured: requestInput,
-        lessonState: {
-          dayIndex: 1,
-          phase: "initial",
-          awaitingResponse: true,
-        },
+    return NextResponse.json(
+      {
+        error: "Missing setup state. Start a new chat and complete the setup screen.",
       },
-    });
+      { status: 400 },
+    );
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
