@@ -53,6 +53,7 @@ const TutorSessionStateSchema = z.object({
 const TutorRequestSchema = z.object({
   messages: z.array(TutorMessageSchema).default([]),
   sessionState: TutorSessionStateSchema.optional(),
+  action: z.enum(["mark_complete"]).optional(),
 });
 
 function getLastUserMessage(messages: Array<z.infer<typeof TutorMessageSchema>>) {
@@ -104,6 +105,34 @@ export async function POST(request: Request) {
           assistantMessage:
             "You have completed all days in this plan. If you want a new topic, tell me what you want to learn next.",
           sessionState: existingState,
+        });
+      }
+
+      if (parsed.action === "mark_complete") {
+        const completedDays = Array.from(
+          new Set([...(existingState.progress?.completedDayIndices ?? []), dayIndex]),
+        ).sort((a, b) => a - b);
+        const progress = await saveCourseProgressIfPossible(
+          buildProgressSnapshot({
+            courseId: existingState.courseId,
+            currentDayIndex: dayIndex,
+            currentPhase: "afterCheckpoint2",
+            completedDayIndices: completedDays,
+            totalDays,
+          }),
+        );
+
+        return NextResponse.json({
+          assistantMessage: `Day ${dayIndex} is marked complete. When you're ready, send a message and I'll start the next lesson.`,
+          sessionState: {
+            ...existingState,
+            progress,
+            lessonState: {
+              ...lessonState,
+              phase: "afterCheckpoint2",
+              awaitingResponse: false,
+            },
+          },
         });
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -47,14 +47,15 @@ type TutorSessionState = {
 };
 
 type AppPhase = "setup" | "chat";
+type TutorAction = "mark_complete";
 
 const STORAGE_KEY = "teachme:tutor-state";
 const dayOptions: SetupDays[] = [3, 5, 7];
 const minuteOptions: SetupMinutes[] = [15, 30, 45, 60];
-const levelOptions: Array<{ label: string; value: SetupLevel; note: string }> = [
-  { label: "Beginner", value: "BEGINNER", note: "Start from first principles" },
-  { label: "Medium", value: "INTERMEDIATE", note: "Build from some familiarity" },
-  { label: "Advanced", value: "ADVANCED", note: "Move faster, focus on nuance" },
+const levelOptions: Array<{ label: string; value: SetupLevel }> = [
+  { label: "Beginner", value: "BEGINNER" },
+  { label: "Medium", value: "INTERMEDIATE" },
+  { label: "Advanced", value: "ADVANCED" },
 ];
 
 function createId() {
@@ -183,11 +184,10 @@ function MarkdownLesson(props: { content: string }) {
 function SegmentButton<T extends string | number>(props: {
   label: string;
   value: T;
-  caption?: string;
   selected?: boolean;
   onSelect: (value: T) => void;
 }) {
-  const { label, value, caption, selected, onSelect } = props;
+  const { label, value, selected, onSelect } = props;
 
   return (
     <button
@@ -200,24 +200,7 @@ function SegmentButton<T extends string | number>(props: {
       }`}
     >
       <div className="text-sm font-semibold uppercase tracking-[0.18em]">{label}</div>
-      {caption ? (
-        <div className={`mt-1 text-sm ${selected ? "text-slate-700" : "text-white/46"}`}>
-          {caption}
-        </div>
-      ) : null}
     </button>
-  );
-}
-
-function SetupMetricCard(props: { label: string; value: string; detail: string }) {
-  const { label, value, detail } = props;
-
-  return (
-    <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.035] p-5">
-      <p className="text-[0.7rem] font-semibold uppercase tracking-[0.24em] text-white/38">{label}</p>
-      <p className="mt-3 text-3xl font-semibold tracking-[-0.04em] text-white">{value}</p>
-      <p className="mt-2 text-sm leading-6 text-white/52">{detail}</p>
-    </div>
   );
 }
 
@@ -262,19 +245,16 @@ function CourseLoader() {
 function ProgressHeader(props: {
   progress: NonNullable<TutorSessionState["progress"]>;
   setup: SetupState;
+  canMarkComplete: boolean;
+  isSending: boolean;
+  onMarkComplete: () => void;
 }) {
-  const { progress, setup } = props;
+  const { progress, setup, canMarkComplete, isSending, onMarkComplete } = props;
   const completedCount = progress.completedDayIndices.length;
   const progressPercent = Math.max(
     (completedCount / progress.totalDays) * 100,
     (1 / progress.totalDays) * 100,
   );
-  const phaseLabel =
-    progress.currentPhase === "initial"
-      ? "In lesson"
-      : progress.currentPhase === "afterCheckpoint1"
-        ? "Checkpoint 2"
-        : "Review complete";
 
   return (
     <section className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-6">
@@ -286,7 +266,7 @@ function ProgressHeader(props: {
             Day {progress.currentDayIndex} of {progress.totalDays}
           </h2>
           <p className="mt-2 text-sm text-white/52">
-            {completedCount} completed{completedCount === 1 ? " day" : " days"} so far · {setup.daysPerWeek ?? 0} days/week · {setup.minutesPerDay ?? 0} min/day
+            {completedCount} completed{completedCount === 1 ? " day" : " days"} so far · {setup.minutesPerDay ?? 0} min per lesson
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:min-w-[320px]">
@@ -294,10 +274,19 @@ function ProgressHeader(props: {
             <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/38">Level</p>
             <p className="mt-2 text-lg font-semibold text-white">{formatLevel(setup.level)}</p>
           </div>
-          <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/38">Phase</p>
-            <p className="mt-2 text-lg font-semibold text-white">{phaseLabel}</p>
-          </div>
+          <button
+            type="button"
+            onClick={onMarkComplete}
+            disabled={!canMarkComplete || isSending}
+            className="rounded-2xl border border-cyan-100/20 bg-white px-4 py-3 text-left text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
+          >
+            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-slate-600 disabled:text-white/30">
+              Progress
+            </p>
+            <p className="mt-2 text-lg font-semibold">
+              {isSending ? "Updating..." : "Mark lesson completed"}
+            </p>
+          </button>
         </div>
       </div>
       <div className="relative mt-5 h-2 overflow-hidden rounded-full bg-white/8">
@@ -308,6 +297,17 @@ function ProgressHeader(props: {
       </div>
     </section>
   );
+}
+
+function RevealStep(props: {
+  visible: boolean;
+  children: ReactNode;
+}) {
+  const { visible, children } = props;
+
+  if (!visible) return null;
+
+  return <div className="space-y-4">{children}</div>;
 }
 
 function SetupScreen(props: {
@@ -330,54 +330,13 @@ function SetupScreen(props: {
     onLevelChange,
     onStart,
   } = props;
+  const topicReady = setup.topic.trim().length >= 3;
+  const daysReady = Boolean(setup.daysPerWeek);
+  const minutesReady = Boolean(setup.minutesPerDay);
+  const levelReady = Boolean(setup.level);
 
   return (
-    <section className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-      <div className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(173,216,255,0.18),transparent_30%),linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.015))] p-7 shadow-[0_35px_120px_rgba(0,0,0,0.35)] sm:p-8 lg:p-10">
-        <div className="absolute -left-16 top-12 h-40 w-40 rounded-full bg-cyan-200/10 blur-3xl" />
-        <div className="absolute bottom-0 right-0 h-56 w-56 rounded-full bg-sky-300/10 blur-3xl" />
-        <div className="relative space-y-10">
-          <div className="space-y-5">
-            <div className="inline-flex items-center rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-white/62">
-              TeachMe
-            </div>
-            <h1 className="max-w-xl text-5xl font-semibold tracking-[-0.07em] text-white sm:text-6xl">
-              A cleaner path from topic to lesson.
-            </h1>
-            <p className="max-w-lg text-lg leading-8 text-white/62">
-              Set your study rhythm once. TeachMe turns it into a paced lesson flow and starts on Day 1 immediately.
-            </p>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-3">
-            <SetupMetricCard
-              label="Format"
-              value="5 Weeks"
-              detail="A fixed-length learning path so pacing stays predictable."
-            />
-            <SetupMetricCard
-              label="Delivery"
-              value="Chat"
-              detail="The tutor writes directly into a reading-first conversation."
-            />
-            <SetupMetricCard
-              label="Structure"
-              value="Daily"
-              detail="Each day teaches, then moves into guided practice."
-            />
-          </div>
-
-          <div className="rounded-[1.5rem] border border-white/10 bg-black/20 p-5">
-            <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">What changes with the rewrite</p>
-            <ul className="mt-4 space-y-3 text-sm leading-7 text-white/60">
-              <li>Modern setup surface with explicit choices instead of a dense form.</li>
-              <li>Reading layout optimized for long lesson content rather than chat bubbles.</li>
-              <li>Cleaner progress visibility without changing the tutor behavior.</li>
-            </ul>
-          </div>
-        </div>
-      </div>
-
+    <section className="mx-auto max-w-3xl">
       <div className="rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05),rgba(255,255,255,0.015))] p-6 shadow-[0_35px_120px_rgba(0,0,0,0.35)] sm:p-8">
         <div className="space-y-8">
           <div className="space-y-3">
@@ -400,7 +359,7 @@ function SetupScreen(props: {
             />
           </div>
 
-          <div className="space-y-4">
+          <RevealStep visible={topicReady}>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
               1. How many days you want to commit to
             </p>
@@ -409,16 +368,15 @@ function SetupScreen(props: {
                 <SegmentButton
                   key={days}
                   label={`${days} days`}
-                  caption={days === 3 ? "Lighter pace" : days === 5 ? "Steady routine" : "Daily focus"}
                   value={days}
                   selected={setup.daysPerWeek === days}
                   onSelect={onDaysChange}
                 />
               ))}
             </div>
-          </div>
+          </RevealStep>
 
-          <div className="space-y-4">
+          <RevealStep visible={topicReady && daysReady}>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
               2. How many minutes per day
             </p>
@@ -427,44 +385,64 @@ function SetupScreen(props: {
                 <SegmentButton
                   key={minutes}
                   label={`${minutes} min`}
-                  caption={minutes <= 30 ? "Short block" : "Deeper session"}
                   value={minutes}
                   selected={setup.minutesPerDay === minutes}
                   onSelect={onMinutesChange}
                 />
               ))}
             </div>
-          </div>
+          </RevealStep>
 
-          <div className="space-y-4">
+          <RevealStep visible={topicReady && daysReady && minutesReady}>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">3. What level are you</p>
             <div className="grid gap-3 sm:grid-cols-3">
               {levelOptions.map((level) => (
                 <SegmentButton
                   key={level.value}
                   label={level.label}
-                  caption={level.note}
                   value={level.value}
                   selected={setup.level === level.value}
                   onSelect={onLevelChange}
                 />
               ))}
             </div>
-          </div>
+          </RevealStep>
 
-          <div className="flex flex-col gap-4 border-t border-white/8 pt-6 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-sm leading-7 text-white/45">
-              Generation begins as soon as your setup is complete.
-            </p>
-            <button
-              type="button"
-              onClick={onStart}
-              disabled={!canStart || isSending}
-              className="inline-flex items-center justify-center rounded-full border border-cyan-100/25 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/20 disabled:text-white/40"
-            >
-              {isSending ? "Generating..." : "Start learning"}
-            </button>
-          </div>
+          <RevealStep visible={topicReady && daysReady && minutesReady && levelReady}>
+            <div className="rounded-[1.5rem] border border-white/10 bg-white/[0.03] p-5">
+              <p className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-white/38">
+                Ready To Generate
+              </p>
+              <div className="mt-4 grid gap-3 text-sm text-white/58 sm:grid-cols-3">
+                <div>
+                  <p className="text-white/35">Days</p>
+                  <p className="mt-1 text-base font-semibold text-white">{setup.daysPerWeek} per week</p>
+                </div>
+                <div>
+                  <p className="text-white/35">Minutes</p>
+                  <p className="mt-1 text-base font-semibold text-white">{setup.minutesPerDay} per day</p>
+                </div>
+                <div>
+                  <p className="text-white/35">Level</p>
+                  <p className="mt-1 text-base font-semibold text-white">{formatLevel(setup.level)}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-4 border-t border-white/8 pt-6 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm leading-7 text-white/45">
+                Generation begins as soon as your setup is complete.
+              </p>
+              <button
+                type="button"
+                onClick={onStart}
+                disabled={!canStart || isSending}
+                className="inline-flex items-center justify-center rounded-full border border-cyan-100/25 bg-white px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/20 disabled:text-white/40"
+              >
+                {isSending ? "Generating..." : "Start learning"}
+              </button>
+            </div>
+          </RevealStep>
         </div>
       </div>
     </section>
@@ -518,14 +496,26 @@ export default function Home() {
     Boolean(setup.level);
 
   const canSend = input.trim().length > 0 && !isSending;
+  const canMarkComplete =
+    phase === "chat" &&
+    Boolean(sessionState.lessonState) &&
+    !isSending &&
+    !sessionState.progress?.completedDayIndices.includes(
+      sessionState.lessonState?.dayIndex ?? -1,
+    );
 
-  async function requestTutor(nextMessages: ChatMessage[], nextState: TutorSessionState) {
+  async function requestTutor(
+    nextMessages: ChatMessage[],
+    nextState: TutorSessionState,
+    action?: TutorAction,
+  ) {
     const response = await fetch("/api/tutor", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: nextMessages.map(({ role, content }) => ({ role, content })),
         sessionState: nextState,
+        action,
       }),
     });
 
@@ -632,6 +622,35 @@ export default function Home() {
     setIsSending(false);
   };
 
+  const handleMarkComplete = async () => {
+    if (!canMarkComplete) return;
+    setError(null);
+    setIsSending(true);
+
+    try {
+      const data = await requestTutor(messages, sessionState, "mark_complete");
+      if (data.assistantMessage) {
+        const assistantMessage = data.assistantMessage;
+        setMessages((current) => [
+          ...current,
+          {
+            id: createId(),
+            role: "assistant",
+            content: formatMessage(assistantMessage),
+          },
+        ]);
+      }
+      if (data.sessionState) {
+        setSessionState(data.sessionState);
+      }
+    } catch (cause) {
+      console.error(cause);
+      setError("Something went wrong while updating progress. Please try again.");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(140,190,255,0.09),transparent_24%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_22%),linear-gradient(180deg,transparent,rgba(255,255,255,0.02))]" />
@@ -642,7 +661,6 @@ export default function Home() {
             <span className="rounded-full border border-white/12 bg-white/[0.05] px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-white/92">
               TeachMe
             </span>
-            <p className="hidden text-sm text-white/46 sm:block">Structured lessons in a reading-first interface.</p>
           </div>
           <button
             type="button"
@@ -679,7 +697,15 @@ export default function Home() {
               </div>
 
               <div className="px-6 py-7 sm:px-8 sm:py-8">
-                {sessionState.progress ? <ProgressHeader progress={sessionState.progress} setup={setup} /> : null}
+                {sessionState.progress ? (
+                  <ProgressHeader
+                    progress={sessionState.progress}
+                    setup={setup}
+                    canMarkComplete={canMarkComplete}
+                    isSending={isSending}
+                    onMarkComplete={handleMarkComplete}
+                  />
+                ) : null}
 
                 <div className="mt-8 space-y-12">
                   {messages.map((message) => (
@@ -764,15 +790,6 @@ export default function Home() {
                     <p className="mt-2 text-xl font-semibold text-white">{formatLevel(setup.level)}</p>
                   </div>
                 </div>
-              </div>
-
-              <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.025] p-5 shadow-[0_25px_80px_rgba(0,0,0,0.25)]">
-                <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">How To Use It</p>
-                <ul className="mt-4 space-y-3 text-sm leading-7 text-white/58">
-                  <li>Respond after each checkpoint with what you built or what broke.</li>
-                  <li>Use short factual answers if you want the tutor to move faster.</li>
-                  <li>Reset if you want to start a different topic or pacing.</li>
-                </ul>
               </div>
             </aside>
           </section>
