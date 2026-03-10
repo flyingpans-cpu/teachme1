@@ -3,6 +3,7 @@ import type { CourseRequestInput, GeneratedCourse } from "./courseSchema";
 import type { AllocatedSession } from "./timeAllocation";
 
 const model = process.env.OPENAI_MODEL ?? "gpt-5.2-mini";
+const defaultApiKey = process.env.OPENAI_API_KEY ?? "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";
 
 export type TutorIntakeResult = {
   assistantMessage: string;
@@ -14,12 +15,8 @@ export type TutorIntakeResult = {
 export type LessonPhase = "initial" | "afterCheckpoint1" | "afterCheckpoint2";
 
 export function getOpenAIClient() {
-  if (!process.env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not set");
-  }
-
   return new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY,
+    apiKey: defaultApiKey,
   });
 }
 
