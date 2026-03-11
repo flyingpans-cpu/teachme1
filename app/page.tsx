@@ -9,6 +9,7 @@ type ChatMessage = {
   role: "user" | "assistant";
   content: string;
 };
+type DayThreads = Record<number, ChatMessage[]>;
 
 type SetupLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 type SetupDays = 3 | 5 | 7;
@@ -47,7 +48,7 @@ type TutorSessionState = {
 };
 
 type AppPhase = "setup" | "chat";
-type TutorAction = "mark_complete";
+type TutorAction = "mark_complete" | "prefetch_day";
 
 const STORAGE_KEY = "teachme:tutor-state";
 const dayOptions: SetupDays[] = [3, 5, 7];
@@ -206,36 +207,33 @@ function SegmentButton<T extends string | number>(props: {
 
 function CourseLoader() {
   return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(176,230,255,0.09),transparent_24%),linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02))] px-6 py-10 shadow-[0_35px_120px_rgba(0,0,0,0.4)] sm:px-8 sm:py-14">
-      <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-100/40 to-transparent" />
-      <div className="mx-auto max-w-4xl space-y-10">
-        <div className="space-y-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-100/55">
-            Generating Course
+    <section className="relative flex min-h-[70vh] items-center justify-center overflow-hidden">
+      <div className="absolute inset-0 bg-black/35 backdrop-blur-md" />
+      <div className="relative w-full max-w-xl rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(12,18,28,0.92),rgba(7,10,16,0.96))] p-8 text-center shadow-[0_45px_140px_rgba(0,0,0,0.5)] sm:p-10">
+        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full border border-cyan-100/15 bg-white/[0.04]">
+          <div className="relative h-10 w-10">
+            <div className="absolute inset-0 rounded-full border-2 border-white/10" />
+            <div className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-cyan-200 border-r-cyan-100" />
+            <div className="absolute inset-[8px] animate-pulse rounded-full bg-cyan-100/18 blur-[2px]" />
+          </div>
+        </div>
+
+        <div className="mt-8 space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-100/55">
+            Building Your Course
           </p>
-          <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl">
-            Building Day 1 and shaping the rest of the curriculum in parallel.
+          <h1 className="text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl">
+            Building your course
           </h1>
-          <p className="max-w-2xl text-base leading-8 text-white/58">
-            The tutor is drafting the opening lesson first so the app can move faster while the rest of the structure is planned.
+          <p className="mx-auto max-w-md text-base leading-8 text-white/58">
+            TeachMe is preparing your first lesson and pacing the rest of the course behind the scenes.
           </p>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-4 rounded-[1.75rem] border border-white/10 bg-black/20 p-5">
-            <div className="h-3 w-32 animate-pulse rounded-full bg-white/12" />
-            <div className="h-10 w-full animate-pulse rounded-full bg-white/8" />
-            <div className="h-10 w-[82%] animate-pulse rounded-full bg-white/6" />
-            <div className="h-px w-full bg-white/8" />
-            <div className="h-14 w-[68%] animate-pulse rounded-3xl bg-white/8" />
-            <div className="h-14 w-[92%] animate-pulse rounded-3xl bg-white/6" />
-            <div className="h-14 w-[76%] animate-pulse rounded-3xl bg-white/8" />
-          </div>
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/[0.03] p-5">
-            <div className="h-4 w-24 animate-pulse rounded-full bg-white/12" />
-            <div className="mt-5 h-24 animate-pulse rounded-[1.5rem] bg-white/7" />
-            <div className="mt-4 h-24 animate-pulse rounded-[1.5rem] bg-white/5" />
-          </div>
+        <div className="mt-8 grid grid-cols-3 gap-3">
+          <div className="h-2 animate-pulse rounded-full bg-white/12 [animation-delay:0ms]" />
+          <div className="h-2 animate-pulse rounded-full bg-white/10 [animation-delay:160ms]" />
+          <div className="h-2 animate-pulse rounded-full bg-white/12 [animation-delay:320ms]" />
         </div>
       </div>
     </section>
@@ -245,16 +243,24 @@ function CourseLoader() {
 function ProgressHeader(props: {
   progress: NonNullable<TutorSessionState["progress"]>;
   setup: SetupState;
+  activeDayIndex: number;
+  currentDayIndex: number;
   canMarkComplete: boolean;
   isSending: boolean;
+  onSelectDay: (dayIndex: number) => void;
   onMarkComplete: () => void;
 }) {
-  const { progress, setup, canMarkComplete, isSending, onMarkComplete } = props;
+  const {
+    progress,
+    setup,
+    activeDayIndex,
+    currentDayIndex,
+    canMarkComplete,
+    isSending,
+    onSelectDay,
+    onMarkComplete,
+  } = props;
   const completedCount = progress.completedDayIndices.length;
-  const progressPercent = Math.max(
-    (completedCount / progress.totalDays) * 100,
-    (1 / progress.totalDays) * 100,
-  );
 
   return (
     <section className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/[0.035] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.2)] sm:p-6">
@@ -263,7 +269,7 @@ function ProgressHeader(props: {
         <div>
           <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Current Progress</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl">
-            Day {progress.currentDayIndex} of {progress.totalDays}
+            Day {activeDayIndex} of {progress.totalDays}
           </h2>
           <p className="mt-2 text-sm text-white/52">
             {completedCount} completed{completedCount === 1 ? " day" : " days"} so far · {setup.minutesPerDay ?? 0} min per lesson
@@ -289,11 +295,45 @@ function ProgressHeader(props: {
           </button>
         </div>
       </div>
-      <div className="relative mt-5 h-2 overflow-hidden rounded-full bg-white/8">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-cyan-100 to-sky-300 transition-[width] duration-500"
-          style={{ width: `${progressPercent}%` }}
-        />
+
+      <div className="relative mt-6">
+        <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-white/38">
+          Course Days
+        </p>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          {Array.from({ length: progress.totalDays }, (_, index) => {
+            const dayIndex = index + 1;
+            const isCompleted = progress.completedDayIndices.includes(dayIndex);
+            const isCurrent = dayIndex === currentDayIndex;
+            const isActive = dayIndex === activeDayIndex;
+            const isUnlocked = isCompleted || isCurrent;
+
+            return (
+              <button
+                key={dayIndex}
+                type="button"
+                onClick={() => onSelectDay(dayIndex)}
+                disabled={!isUnlocked}
+                className={`min-w-[88px] rounded-2xl border px-4 py-3 text-left transition ${
+                  isActive
+                    ? "border-cyan-100/45 bg-white text-slate-950"
+                    : isCompleted
+                      ? "border-white/10 bg-white/[0.06] text-white"
+                      : isCurrent
+                        ? "border-cyan-100/25 bg-cyan-100/8 text-white"
+                        : "border-white/8 bg-white/[0.02] text-white/30"
+                }`}
+              >
+                <p className="text-[0.64rem] font-semibold uppercase tracking-[0.18em]">
+                  Day {dayIndex}
+                </p>
+                <p className={`mt-1 text-sm ${isActive ? "text-slate-700" : "text-inherit"}`}>
+                  {isCompleted ? "Completed" : isCurrent ? "Current" : "Locked"}
+                </p>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -342,7 +382,7 @@ function SetupScreen(props: {
           <div className="space-y-3">
             <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Start Here</p>
             <h2 className="text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl">
-              Choose the topic and the pacing.
+              Choose the topic you want to learn about.
             </h2>
           </div>
 
@@ -452,12 +492,14 @@ function SetupScreen(props: {
 export default function Home() {
   const [phase, setPhase] = useState<AppPhase>("setup");
   const [setup, setSetup] = useState<SetupState>({ topic: "" });
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [dayThreads, setDayThreads] = useState<DayThreads>({});
+  const [activeDayIndex, setActiveDayIndex] = useState(1);
   const [sessionState, setSessionState] = useState<TutorSessionState>({});
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
+  const prefetchedDaysRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -466,12 +508,24 @@ export default function Home() {
       const parsed = JSON.parse(raw) as {
         phase?: AppPhase;
         setup?: SetupState;
+        dayThreads?: DayThreads;
+        activeDayIndex?: number;
         messages?: ChatMessage[];
         sessionState?: TutorSessionState;
       };
       if (parsed.phase) setPhase(parsed.phase);
       if (parsed.setup) setSetup(parsed.setup);
-      if (parsed.messages) setMessages(parsed.messages);
+      if (parsed.dayThreads) {
+        setDayThreads(parsed.dayThreads);
+        prefetchedDaysRef.current = new Set(
+          Object.keys(parsed.dayThreads).map((key) => Number(key)),
+        );
+      } else if (parsed.messages?.length) {
+        const fallbackDayIndex = parsed.sessionState?.lessonState?.dayIndex ?? 1;
+        setDayThreads({ [fallbackDayIndex]: parsed.messages });
+        prefetchedDaysRef.current = new Set([fallbackDayIndex]);
+      }
+      if (parsed.activeDayIndex) setActiveDayIndex(parsed.activeDayIndex);
       if (parsed.sessionState) setSessionState(parsed.sessionState);
     } catch {
       localStorage.removeItem(STORAGE_KEY);
@@ -481,13 +535,13 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ phase, setup, messages, sessionState }),
+      JSON.stringify({ phase, setup, dayThreads, activeDayIndex, sessionState }),
     );
-  }, [phase, setup, messages, sessionState]);
+  }, [phase, setup, dayThreads, activeDayIndex, sessionState]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending]);
+  }, [activeDayIndex, dayThreads, isSending]);
 
   const canStart =
     setup.topic.trim().length >= 3 &&
@@ -495,10 +549,20 @@ export default function Home() {
     Boolean(setup.minutesPerDay) &&
     Boolean(setup.level);
 
-  const canSend = input.trim().length > 0 && !isSending;
+  const currentDayIndex =
+    sessionState.lessonState?.dayIndex ?? sessionState.progress?.currentDayIndex ?? 1;
+  const currentThread = dayThreads[activeDayIndex] ?? [];
+  const isViewingCurrentDay = activeDayIndex === currentDayIndex;
+  const canSend =
+    input.trim().length > 0 &&
+    !isSending &&
+    phase === "chat" &&
+    isViewingCurrentDay &&
+    Boolean(sessionState.lessonState);
   const canMarkComplete =
     phase === "chat" &&
     Boolean(sessionState.lessonState) &&
+    isViewingCurrentDay &&
     !isSending &&
     !sessionState.progress?.completedDayIndices.includes(
       sessionState.lessonState?.dayIndex ?? -1,
@@ -508,6 +572,7 @@ export default function Home() {
     nextMessages: ChatMessage[],
     nextState: TutorSessionState,
     action?: TutorAction,
+    requestedDayIndex?: number,
   ) {
     const response = await fetch("/api/tutor", {
       method: "POST",
@@ -516,6 +581,7 @@ export default function Home() {
         messages: nextMessages.map(({ role, content }) => ({ role, content })),
         sessionState: nextState,
         action,
+        requestedDayIndex,
       }),
     });
 
@@ -528,6 +594,39 @@ export default function Home() {
       assistantMessage?: string;
       sessionState?: TutorSessionState;
     };
+  }
+
+  async function prefetchRemainingDays(nextState: TutorSessionState) {
+    const totalDays = nextState.progress?.totalDays ?? 0;
+    if (!totalDays) return;
+
+    for (let dayIndex = 1; dayIndex <= totalDays; dayIndex += 1) {
+      if (prefetchedDaysRef.current.has(dayIndex)) continue;
+      prefetchedDaysRef.current.add(dayIndex);
+
+      try {
+        const data = await requestTutor([], nextState, "prefetch_day", dayIndex);
+        const assistantMessage = data.assistantMessage;
+        if (!assistantMessage) continue;
+
+        setDayThreads((current) => {
+          if (current[dayIndex]) return current;
+          return {
+            ...current,
+            [dayIndex]: [
+              {
+                id: createId(),
+                role: "assistant",
+                content: formatMessage(assistantMessage),
+              },
+            ],
+          };
+        });
+      } catch (cause) {
+        console.error(`Failed to prefetch day ${dayIndex}`, cause);
+        prefetchedDaysRef.current.delete(dayIndex);
+      }
+    }
   }
 
   const handleStart = async () => {
@@ -546,23 +645,27 @@ export default function Home() {
     };
 
     setPhase("chat");
-    setMessages([]);
+    setDayThreads({});
+    setActiveDayIndex(1);
     setSessionState(nextState);
     setError(null);
     setIsSending(true);
 
     try {
       const data = await requestTutor([], nextState);
-      setMessages([
-        {
-          id: createId(),
-          role: "assistant",
-          content: formatMessage(data.assistantMessage ?? "I couldn't generate your course."),
-        },
-      ]);
-      if (data.sessionState) {
-        setSessionState(data.sessionState);
-      }
+      const resolvedState = data.sessionState ?? nextState;
+      setDayThreads({
+        1: [
+          {
+            id: createId(),
+            role: "assistant",
+            content: formatMessage(data.assistantMessage ?? "I couldn't generate your course."),
+          },
+        ],
+      });
+      prefetchedDaysRef.current = new Set([1]);
+      setSessionState(resolvedState);
+      void prefetchRemainingDays(resolvedState);
     } catch (cause) {
       console.error(cause);
       setError("Something went wrong while generating the course. Please try again.");
@@ -583,22 +686,28 @@ export default function Home() {
       content: trimmed,
     };
 
-    const outgoingMessages = [...messages, userMessage];
-    setMessages(outgoingMessages);
+    const outgoingMessages = [...currentThread, userMessage];
+    setDayThreads((current) => ({
+      ...current,
+      [activeDayIndex]: outgoingMessages,
+    }));
     setInput("");
 
     try {
       const data = await requestTutor(outgoingMessages, sessionState);
-      setMessages((current) => [
+      setDayThreads((current) => ({
         ...current,
-        {
-          id: createId(),
-          role: "assistant",
-          content: formatMessage(
-            data.assistantMessage ?? "I didn’t catch that. Could you rephrase your last message?",
-          ),
-        },
-      ]);
+        [activeDayIndex]: [
+          ...(current[activeDayIndex] ?? outgoingMessages),
+          {
+            id: createId(),
+            role: "assistant",
+            content: formatMessage(
+              data.assistantMessage ?? "I didn’t catch that. Could you rephrase your last message?",
+            ),
+          },
+        ],
+      }));
 
       if (data.sessionState) {
         setSessionState(data.sessionState);
@@ -615,7 +724,8 @@ export default function Home() {
     localStorage.removeItem(STORAGE_KEY);
     setPhase("setup");
     setSetup({ topic: "" });
-    setMessages([]);
+    setDayThreads({});
+    setActiveDayIndex(1);
     setSessionState({});
     setInput("");
     setError(null);
@@ -628,20 +738,76 @@ export default function Home() {
     setIsSending(true);
 
     try {
-      const data = await requestTutor(messages, sessionState, "mark_complete");
+      const data = await requestTutor(currentThread, sessionState, "mark_complete");
       if (data.assistantMessage) {
         const assistantMessage = data.assistantMessage;
-        setMessages((current) => [
+        setDayThreads((current) => ({
           ...current,
-          {
-            id: createId(),
-            role: "assistant",
-            content: formatMessage(assistantMessage),
-          },
-        ]);
+          [currentDayIndex]: [
+            ...(current[currentDayIndex] ?? []),
+            {
+              id: createId(),
+              role: "assistant",
+              content: formatMessage(assistantMessage),
+            },
+          ],
+        }));
       }
       if (data.sessionState) {
-        setSessionState(data.sessionState);
+        const completedState = data.sessionState;
+        const nextDayIndex = currentDayIndex + 1;
+        const hasNextDay = nextDayIndex <= (completedState.progress?.totalDays ?? 0);
+
+        if (hasNextDay) {
+          let nextThread = dayThreads[nextDayIndex];
+
+          if (!nextThread) {
+            const prefetched = await requestTutor([], completedState, "prefetch_day", nextDayIndex);
+            const nextMessage = formatMessage(
+              prefetched.assistantMessage ?? "I couldn't load the next lesson.",
+            );
+            nextThread = [{ id: createId(), role: "assistant", content: nextMessage }];
+            setDayThreads((current) => ({
+              ...current,
+              [nextDayIndex]: nextThread!,
+            }));
+            prefetchedDaysRef.current.add(nextDayIndex);
+          }
+
+          setActiveDayIndex(nextDayIndex);
+          setSessionState({
+            ...completedState,
+            progress: completedState.progress
+              ? {
+                  ...completedState.progress,
+                  currentDayIndex: nextDayIndex,
+                  currentPhase: "initial",
+                }
+              : completedState.progress,
+            lessonState: {
+              dayIndex: nextDayIndex,
+              phase: "initial",
+              awaitingResponse: true,
+            },
+          });
+          void prefetchRemainingDays({
+            ...completedState,
+            progress: completedState.progress
+              ? {
+                  ...completedState.progress,
+                  currentDayIndex: nextDayIndex,
+                  currentPhase: "initial",
+                }
+              : completedState.progress,
+            lessonState: {
+              dayIndex: nextDayIndex,
+              phase: "initial",
+              awaitingResponse: true,
+            },
+          });
+        } else {
+          setSessionState(data.sessionState);
+        }
       }
     } catch (cause) {
       console.error(cause);
@@ -684,7 +850,7 @@ export default function Home() {
             onLevelChange={(value) => setSetup((current) => ({ ...current, level: value }))}
             onStart={handleStart}
           />
-        ) : isSending && messages.length === 0 ? (
+        ) : isSending && Object.keys(dayThreads).length === 0 ? (
           <CourseLoader />
         ) : (
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
@@ -701,14 +867,17 @@ export default function Home() {
                   <ProgressHeader
                     progress={sessionState.progress}
                     setup={setup}
+                    activeDayIndex={activeDayIndex}
+                    currentDayIndex={currentDayIndex}
                     canMarkComplete={canMarkComplete}
                     isSending={isSending}
+                    onSelectDay={(dayIndex) => setActiveDayIndex(dayIndex)}
                     onMarkComplete={handleMarkComplete}
                   />
                 ) : null}
 
                 <div className="mt-8 space-y-12">
-                  {messages.map((message) => (
+                  {currentThread.map((message) => (
                     <article
                       key={message.id}
                       className={message.role === "assistant" ? "border-b border-white/8 pb-12" : "ml-auto max-w-3xl"}
@@ -745,24 +914,30 @@ export default function Home() {
                   <label htmlFor="chat-input" className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-white/38">
                     Continue the conversation
                   </label>
-                  <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                    <textarea
-                      id="chat-input"
-                      value={input}
-                      onChange={(event) => setInput(event.target.value)}
-                      rows={3}
-                      placeholder="Share your result, ask a question, or describe what happened..."
-                      className="min-h-[132px] flex-1 rounded-[1.5rem] border border-white/10 bg-white/[0.03] px-5 py-4 text-base text-white outline-none transition placeholder:text-white/24 focus:border-cyan-100/40 focus:bg-white/[0.05]"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSend}
-                      disabled={!canSend}
-                      className="inline-flex h-14 items-center justify-center rounded-full border border-cyan-100/20 bg-white px-6 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
-                    >
-                      Send
-                    </button>
-                  </div>
+                  {isViewingCurrentDay ? (
+                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                      <textarea
+                        id="chat-input"
+                        value={input}
+                        onChange={(event) => setInput(event.target.value)}
+                        rows={3}
+                        placeholder="Share your result, ask a question, or describe what happened..."
+                        className="min-h-[132px] flex-1 rounded-[1.5rem] border border-white/10 bg-white/[0.03] px-5 py-4 text-base text-white outline-none transition placeholder:text-white/24 focus:border-cyan-100/40 focus:bg-white/[0.05]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSend}
+                        disabled={!canSend}
+                        className="inline-flex h-14 items-center justify-center rounded-full border border-cyan-100/20 bg-white px-6 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm leading-7 text-white/48">
+                      You are viewing a completed day. Select the current day to continue.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

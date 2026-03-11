@@ -53,7 +53,8 @@ const TutorSessionStateSchema = z.object({
 const TutorRequestSchema = z.object({
   messages: z.array(TutorMessageSchema).default([]),
   sessionState: TutorSessionStateSchema.optional(),
-  action: z.enum(["mark_complete"]).optional(),
+  action: z.enum(["mark_complete", "prefetch_day"]).optional(),
+  requestedDayIndex: z.number().int().min(1).optional(),
 });
 
 function getLastUserMessage(messages: Array<z.infer<typeof TutorMessageSchema>>) {
@@ -104,6 +105,30 @@ export async function POST(request: Request) {
         return NextResponse.json({
           assistantMessage:
             "You have completed all days in this plan. If you want a new topic, tell me what you want to learn next.",
+          sessionState: existingState,
+        });
+      }
+
+      if (parsed.action === "prefetch_day" && parsed.requestedDayIndex) {
+        const requestedSession = allocation.sessions[parsed.requestedDayIndex - 1];
+        if (!requestedSession) {
+          return NextResponse.json(
+            { error: "Requested day is outside the generated course." },
+            { status: 400 },
+          );
+        }
+
+        const chunk = await generateLessonChunkWithLLM({
+          topic: captured.topic ?? "",
+          level: captured.level,
+          dayIndex: parsed.requestedDayIndex,
+          totalDays,
+          minutesPerDay: requestedSession.targetMinutes,
+          phase: "initial",
+        });
+
+        return NextResponse.json({
+          assistantMessage: chunk,
           sessionState: existingState,
         });
       }
@@ -217,15 +242,12 @@ export async function POST(request: Request) {
             exerciseResponse: lastUserMessage,
           });
 
-          const completedDays = Array.from(
-            new Set([...(existingState.progress?.completedDayIndices ?? []), dayIndex]),
-          ).sort((a, b) => a - b);
           const progress = await saveCourseProgressIfPossible(
             buildProgressSnapshot({
               courseId: existingState.courseId,
               currentDayIndex: dayIndex,
               currentPhase: "afterCheckpoint2",
-              completedDayIndices: completedDays,
+              completedDayIndices: existingState.progress?.completedDayIndices ?? [],
               totalDays,
             }),
           );
@@ -243,6 +265,17 @@ export async function POST(request: Request) {
             },
           });
         }
+      }
+
+      const isCurrentDayCompleted =
+        existingState.progress?.completedDayIndices.includes(dayIndex) ?? false;
+
+      if (lessonState.phase === "afterCheckpoint2" && !isCurrentDayCompleted) {
+        return NextResponse.json({
+          assistantMessage:
+            "Mark this lesson completed when you're ready to unlock the next day.",
+          sessionState: existingState,
+        });
       }
 
       const nextDayIndex = lessonState.phase === "afterCheckpoint2" ? dayIndex + 1 : dayIndex;
