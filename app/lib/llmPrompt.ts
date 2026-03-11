@@ -81,19 +81,22 @@ export async function suggestTopicOptionsWithLLM(options: {
   topicInput: string;
 }): Promise<{ options: TopicSuggestion[] }> {
   const { topicInput } = options;
+  const normalizedTopicInput = topicInput.trim().replace(/\s+/g, " ");
   const client = getOpenAIClient();
 
   const systemPrompt = [
     "You help disambiguate what a learner wants to study before course generation.",
     "Return ONLY minified JSON.",
     "Generate up to 5 concrete topic options based on the learner input.",
+    "Option 1 MUST preserve the learner input verbatim as the title. Do not rename it, reinterpret it, add punctuation, or mutate the wording.",
+    "Option 1 description should say that the course will teach exactly what the learner asked for, using their intended meaning.",
     "Each option must be distinct, plausible, and narrow enough to guide accurate course generation.",
     "Descriptions must be one sentence and explain what the learner would actually study.",
     "Avoid overlapping duplicates and avoid joke options.",
     'Output schema: {"options":[{"title":string,"description":string}]}',
   ].join("\n");
 
-  const userPrompt = `Learner input: ${topicInput}`;
+  const userPrompt = `Learner input: ${normalizedTopicInput}`;
 
   const response = await createChatCompletion(client, {
     messages: [
@@ -109,8 +112,17 @@ export async function suggestTopicOptionsWithLLM(options: {
   }
 
   const parsed = JSON.parse(extractJson(raw)) as { options?: TopicSuggestion[] };
+  const exactOption: TopicSuggestion = {
+    title: normalizedTopicInput,
+    description: `Learn exactly what you meant by "${normalizedTopicInput}", using your intended meaning and context.`,
+  };
+  const otherOptions = (parsed.options ?? []).filter(
+    (option) =>
+      option.title.trim().toLowerCase() !== normalizedTopicInput.toLowerCase(),
+  );
+
   return {
-    options: (parsed.options ?? []).slice(0, 5),
+    options: [exactOption, ...otherOptions].slice(0, 5),
   };
 }
 
