@@ -27,6 +27,11 @@ export type CheckpointIntentResult = {
   reasoning?: string;
 };
 
+export type TopicSuggestion = {
+  title: string;
+  description: string;
+};
+
 export function getOpenAIClient() {
   return new OpenAI({
     apiKey: defaultApiKey,
@@ -70,6 +75,43 @@ function extractJson(raw: string) {
   const jsonStart = raw.indexOf("{");
   const jsonEnd = raw.lastIndexOf("}");
   return jsonStart >= 0 && jsonEnd >= jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;
+}
+
+export async function suggestTopicOptionsWithLLM(options: {
+  topicInput: string;
+}): Promise<{ options: TopicSuggestion[] }> {
+  const { topicInput } = options;
+  const client = getOpenAIClient();
+
+  const systemPrompt = [
+    "You help disambiguate what a learner wants to study before course generation.",
+    "Return ONLY minified JSON.",
+    "Generate up to 5 concrete topic options based on the learner input.",
+    "Each option must be distinct, plausible, and narrow enough to guide accurate course generation.",
+    "Descriptions must be one sentence and explain what the learner would actually study.",
+    "Avoid overlapping duplicates and avoid joke options.",
+    'Output schema: {"options":[{"title":string,"description":string}]}',
+  ].join("\n");
+
+  const userPrompt = `Learner input: ${topicInput}`;
+
+  const response = await createChatCompletion(client, {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    temperature: 0.4,
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "";
+  if (!raw) {
+    throw new Error("Empty response from topic suggestion LLM");
+  }
+
+  const parsed = JSON.parse(extractJson(raw)) as { options?: TopicSuggestion[] };
+  return {
+    options: (parsed.options ?? []).slice(0, 5),
+  };
 }
 
 export async function runTutorIntakeWithLLM(options: {
@@ -303,7 +345,8 @@ export async function generateLessonChunkWithLLM(options: {
     "",
     "Output format:",
     "- Use markdown headings.",
-    "- Start with: \"### Day X — [Concept Title]\" and \"Estimated Time\" and \"Goal\" lines.",
+    "- If phase=initial: start with \"### Day X — [Concept Title]\" and include \"Estimated Time\" and \"Goal\" lines.",
+    "- If phase=afterCheckpoint1 or phase=afterCheckpoint2: do NOT repeat the day heading, title, estimated time, or goal.",
   ].join("\n");
 
   const userPrompt = [

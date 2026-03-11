@@ -10,13 +10,18 @@ type ChatMessage = {
   content: string;
 };
 type DayThreads = Record<number, ChatMessage[]>;
+type TopicSuggestion = {
+  title: string;
+  description: string;
+};
 
 type SetupLevel = "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
 type SetupDays = 3 | 5 | 7;
 type SetupMinutes = 15 | 30 | 45 | 60;
 
 type SetupState = {
-  topic: string;
+  topicInput: string;
+  selectedTopic?: TopicSuggestion;
   daysPerWeek?: SetupDays;
   minutesPerDay?: SetupMinutes;
   level?: SetupLevel;
@@ -67,8 +72,9 @@ function createId() {
 }
 
 function buildCapturedState(setup: Required<SetupState>): NonNullable<TutorSessionState["captured"]> {
+  const selectedTopic = setup.selectedTopic;
   return {
-    topic: setup.topic,
+    topic: `${selectedTopic.title}: ${selectedTopic.description}`,
     level: setup.level,
     sessionsPerWeek: setup.daysPerWeek,
     preferredSessionLengthMinutes: setup.minutesPerDay,
@@ -88,6 +94,10 @@ function formatLevel(level?: SetupLevel) {
   if (level === "INTERMEDIATE") return "Medium";
   if (level === "ADVANCED") return "Advanced";
   return "";
+}
+
+function formatSelectedTopic(selectedTopic?: TopicSuggestion) {
+  return selectedTopic?.title ?? "";
 }
 
 function MarkdownLesson(props: { content: string }) {
@@ -205,6 +215,33 @@ function SegmentButton<T extends string | number>(props: {
   );
 }
 
+function TopicOptionCard(props: {
+  option: TopicSuggestion;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const { option, selected, onSelect } = props;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`rounded-[1.5rem] border p-4 text-left transition ${
+        selected
+          ? "border-cyan-200/55 bg-white text-slate-950 shadow-[0_20px_50px_rgba(190,242,255,0.18)]"
+          : "border-white/10 bg-white/[0.03] text-white hover:border-white/22 hover:bg-white/[0.05]"
+      }`}
+    >
+      <p className="text-sm font-semibold uppercase tracking-[0.18em]">
+        {option.title}
+      </p>
+      <p className={`mt-2 text-sm leading-6 ${selected ? "text-slate-700" : "text-white/58"}`}>
+        {option.description}
+      </p>
+    </button>
+  );
+}
+
 function CourseLoader() {
   return (
     <section className="relative flex min-h-[70vh] items-center justify-center overflow-hidden">
@@ -314,20 +351,22 @@ function ProgressHeader(props: {
                 type="button"
                 onClick={() => onSelectDay(dayIndex)}
                 disabled={!isUnlocked}
-                className={`min-w-[88px] rounded-2xl border px-4 py-3 text-left transition ${
+                className={`min-w-[112px] rounded-2xl border px-4 py-3 text-left transition ${
                   isActive
-                    ? "border-cyan-100/45 bg-white text-slate-950"
+                    ? isCompleted
+                      ? "border-emerald-300/50 bg-emerald-50 text-emerald-950"
+                      : "border-sky-300/55 bg-sky-50 text-sky-950"
                     : isCompleted
-                      ? "border-white/10 bg-white/[0.06] text-white"
+                      ? "border-emerald-400/25 bg-emerald-400/12 text-emerald-100"
                       : isCurrent
-                        ? "border-cyan-100/25 bg-cyan-100/8 text-white"
+                        ? "border-sky-300/35 bg-sky-300/12 text-sky-50"
                         : "border-white/8 bg-white/[0.02] text-white/30"
                 }`}
               >
                 <p className="text-[0.64rem] font-semibold uppercase tracking-[0.18em]">
                   Day {dayIndex}
                 </p>
-                <p className={`mt-1 text-sm ${isActive ? "text-slate-700" : "text-inherit"}`}>
+                <p className="mt-1 whitespace-nowrap text-sm leading-5 text-inherit">
                   {isCompleted ? "Completed" : isCurrent ? "Current" : "Locked"}
                 </p>
               </button>
@@ -352,9 +391,13 @@ function RevealStep(props: {
 
 function SetupScreen(props: {
   setup: SetupState;
+  topicOptions: TopicSuggestion[];
+  isLoadingTopics: boolean;
   canStart: boolean;
   isSending: boolean;
-  onTopicChange: (value: string) => void;
+  onTopicInputChange: (value: string) => void;
+  onRequestTopics: () => void;
+  onSelectTopic: (option: TopicSuggestion) => void;
   onDaysChange: (value: SetupDays) => void;
   onMinutesChange: (value: SetupMinutes) => void;
   onLevelChange: (value: SetupLevel) => void;
@@ -362,15 +405,20 @@ function SetupScreen(props: {
 }) {
   const {
     setup,
+    topicOptions,
+    isLoadingTopics,
     canStart,
     isSending,
-    onTopicChange,
+    onTopicInputChange,
+    onRequestTopics,
+    onSelectTopic,
     onDaysChange,
     onMinutesChange,
     onLevelChange,
     onStart,
   } = props;
-  const topicReady = setup.topic.trim().length >= 3;
+  const topicInputReady = setup.topicInput.trim().length >= 3;
+  const topicReady = Boolean(setup.selectedTopic);
   const daysReady = Boolean(setup.daysPerWeek);
   const minutesReady = Boolean(setup.minutesPerDay);
   const levelReady = Boolean(setup.level);
@@ -390,14 +438,49 @@ function SetupScreen(props: {
             <label htmlFor="topic" className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
               Topic
             </label>
-            <input
-              id="topic"
-              value={setup.topic}
-              onChange={(event) => onTopicChange(event.target.value)}
-              placeholder="Examples: vibecode, memory systems, sourdough..."
-              className="block w-full rounded-[1.5rem] border border-white/10 bg-black/20 px-5 py-4 text-lg text-white shadow-sm outline-none transition placeholder:text-white/25 focus:border-cyan-100/40 focus:bg-black/30"
-            />
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <input
+                id="topic"
+                value={setup.topicInput}
+                onChange={(event) => onTopicInputChange(event.target.value)}
+                placeholder="Examples: vibecode, memory systems, sourdough..."
+                className="block flex-1 rounded-[1.5rem] border border-white/10 bg-black/20 px-5 py-4 text-lg text-white shadow-sm outline-none transition placeholder:text-white/25 focus:border-cyan-100/40 focus:bg-black/30"
+              />
+              <button
+                type="button"
+                onClick={onRequestTopics}
+                disabled={!topicInputReady || isLoadingTopics}
+                className="inline-flex items-center justify-center rounded-full border border-cyan-100/25 bg-white px-5 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-slate-950 transition hover:bg-cyan-50 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/20 disabled:text-white/40"
+              >
+                {isLoadingTopics ? "Finding..." : "Show options"}
+              </button>
+            </div>
+            {setup.selectedTopic ? (
+              <p className="text-sm leading-7 text-emerald-200/80">
+                Selected topic: {setup.selectedTopic.title}
+              </p>
+            ) : (
+              <p className="text-sm leading-7 text-white/45">
+                Pick the closest topic option before the course is generated.
+              </p>
+            )}
           </div>
+
+          <RevealStep visible={topicOptions.length > 0}>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
+              Select the topic that best matches what you want to learn
+            </p>
+            <div className="grid gap-3">
+              {topicOptions.map((option) => (
+                <TopicOptionCard
+                  key={option.title}
+                  option={option}
+                  selected={setup.selectedTopic?.title === option.title}
+                  onSelect={() => onSelectTopic(option)}
+                />
+              ))}
+            </div>
+          </RevealStep>
 
           <RevealStep visible={topicReady}>
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-white/42">
@@ -456,7 +539,7 @@ function SetupScreen(props: {
               <div className="mt-4 grid gap-3 text-sm text-white/58 sm:grid-cols-3">
                 <div>
                   <p className="text-white/35">Days</p>
-                  <p className="mt-1 text-base font-semibold text-white">{setup.daysPerWeek} per week</p>
+                  <p className="mt-1 text-base font-semibold text-white">{setup.daysPerWeek} days</p>
                 </div>
                 <div>
                   <p className="text-white/35">Minutes</p>
@@ -491,14 +574,16 @@ function SetupScreen(props: {
 
 export default function Home() {
   const [phase, setPhase] = useState<AppPhase>("setup");
-  const [setup, setSetup] = useState<SetupState>({ topic: "" });
+  const [setup, setSetup] = useState<SetupState>({ topicInput: "" });
+  const [topicOptions, setTopicOptions] = useState<TopicSuggestion[]>([]);
+  const [isLoadingTopics, setIsLoadingTopics] = useState(false);
   const [dayThreads, setDayThreads] = useState<DayThreads>({});
   const [activeDayIndex, setActiveDayIndex] = useState(1);
   const [sessionState, setSessionState] = useState<TutorSessionState>({});
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const lessonTopRef = useRef<HTMLDivElement | null>(null);
   const prefetchedDaysRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
@@ -508,6 +593,7 @@ export default function Home() {
       const parsed = JSON.parse(raw) as {
         phase?: AppPhase;
         setup?: SetupState;
+        topicOptions?: TopicSuggestion[];
         dayThreads?: DayThreads;
         activeDayIndex?: number;
         messages?: ChatMessage[];
@@ -515,6 +601,7 @@ export default function Home() {
       };
       if (parsed.phase) setPhase(parsed.phase);
       if (parsed.setup) setSetup(parsed.setup);
+      if (parsed.topicOptions) setTopicOptions(parsed.topicOptions);
       if (parsed.dayThreads) {
         setDayThreads(parsed.dayThreads);
         prefetchedDaysRef.current = new Set(
@@ -535,16 +622,17 @@ export default function Home() {
   useEffect(() => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ phase, setup, dayThreads, activeDayIndex, sessionState }),
+      JSON.stringify({ phase, setup, topicOptions, dayThreads, activeDayIndex, sessionState }),
     );
-  }, [phase, setup, dayThreads, activeDayIndex, sessionState]);
+  }, [phase, setup, topicOptions, dayThreads, activeDayIndex, sessionState]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [activeDayIndex, dayThreads, isSending]);
+    if (phase !== "chat") return;
+    lessonTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [activeDayIndex, phase]);
 
   const canStart =
-    setup.topic.trim().length >= 3 &&
+    Boolean(setup.selectedTopic) &&
     Boolean(setup.daysPerWeek) &&
     Boolean(setup.minutesPerDay) &&
     Boolean(setup.level);
@@ -596,6 +684,21 @@ export default function Home() {
     };
   }
 
+  async function requestTopicOptions(topicInput: string) {
+    const response = await fetch("/api/topics/suggest", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ topicInput }),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw new Error(data?.error || "Unable to suggest topic options.");
+    }
+
+    return (await response.json()) as { options?: TopicSuggestion[] };
+  }
+
   async function prefetchRemainingDays(nextState: TutorSessionState) {
     const totalDays = nextState.progress?.totalDays ?? 0;
     if (!totalDays) return;
@@ -633,7 +736,8 @@ export default function Home() {
     if (!canStart || isSending) return;
 
     const completeSetup = {
-      topic: setup.topic.trim(),
+      topicInput: setup.topicInput.trim(),
+      selectedTopic: setup.selectedTopic as TopicSuggestion,
       daysPerWeek: setup.daysPerWeek as SetupDays,
       minutesPerDay: setup.minutesPerDay as SetupMinutes,
       level: setup.level as SetupLevel,
@@ -665,6 +769,9 @@ export default function Home() {
       });
       prefetchedDaysRef.current = new Set([1]);
       setSessionState(resolvedState);
+      requestAnimationFrame(() => {
+        lessonTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
       void prefetchRemainingDays(resolvedState);
     } catch (cause) {
       console.error(cause);
@@ -723,13 +830,31 @@ export default function Home() {
   const handleReset = () => {
     localStorage.removeItem(STORAGE_KEY);
     setPhase("setup");
-    setSetup({ topic: "" });
+    setSetup({ topicInput: "" });
+    setTopicOptions([]);
     setDayThreads({});
     setActiveDayIndex(1);
     setSessionState({});
     setInput("");
     setError(null);
     setIsSending(false);
+  };
+
+  const handleRequestTopics = async () => {
+    const topicInput = setup.topicInput.trim();
+    if (topicInput.length < 3 || isLoadingTopics) return;
+
+    setError(null);
+    setIsLoadingTopics(true);
+    try {
+      const data = await requestTopicOptions(topicInput);
+      setTopicOptions(data.options ?? []);
+    } catch (cause) {
+      console.error(cause);
+      setError("Something went wrong while suggesting topics. Please try again.");
+    } finally {
+      setIsLoadingTopics(false);
+    }
   };
 
   const handleMarkComplete = async () => {
@@ -790,6 +915,9 @@ export default function Home() {
               awaitingResponse: true,
             },
           });
+          requestAnimationFrame(() => {
+            lessonTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
           void prefetchRemainingDays({
             ...completedState,
             progress: completedState.progress
@@ -842,9 +970,25 @@ export default function Home() {
         {phase === "setup" ? (
           <SetupScreen
             setup={setup}
+            topicOptions={topicOptions}
+            isLoadingTopics={isLoadingTopics}
             canStart={canStart}
             isSending={isSending}
-            onTopicChange={(value) => setSetup((current) => ({ ...current, topic: value }))}
+            onTopicInputChange={(value) => {
+              setSetup((current) => ({
+                ...current,
+                topicInput: value,
+                selectedTopic: undefined,
+              }));
+              setTopicOptions([]);
+            }}
+            onRequestTopics={handleRequestTopics}
+            onSelectTopic={(option) =>
+              setSetup((current) => ({
+                ...current,
+                selectedTopic: option,
+              }))
+            }
             onDaysChange={(value) => setSetup((current) => ({ ...current, daysPerWeek: value }))}
             onMinutesChange={(value) => setSetup((current) => ({ ...current, minutesPerDay: value }))}
             onLevelChange={(value) => setSetup((current) => ({ ...current, level: value }))}
@@ -855,10 +999,11 @@ export default function Home() {
         ) : (
           <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
             <div className="overflow-hidden rounded-[2rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.045),rgba(255,255,255,0.02))] shadow-[0_35px_120px_rgba(0,0,0,0.45)]">
+              <div ref={lessonTopRef} />
               <div className="border-b border-white/8 px-6 py-5 sm:px-8">
                 <p className="text-[0.72rem] font-semibold uppercase tracking-[0.24em] text-white/38">Current Lesson</p>
                 <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-[-0.05em] text-white sm:text-4xl">
-                  {setup.topic.trim() || "Your course"}
+                  {formatSelectedTopic(setup.selectedTopic) || "Your course"}
                 </h1>
               </div>
 
@@ -900,8 +1045,6 @@ export default function Home() {
                       Writing the next part of your lesson...
                     </div>
                   ) : null}
-
-                  <div ref={endRef} />
                 </div>
 
                 {error ? (
@@ -911,11 +1054,8 @@ export default function Home() {
                 ) : null}
 
                 <div className="mt-8 rounded-[1.75rem] border border-white/10 bg-black/15 p-4 sm:p-5">
-                  <label htmlFor="chat-input" className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-white/38">
-                    Continue the conversation
-                  </label>
                   {isViewingCurrentDay ? (
-                    <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                       <textarea
                         id="chat-input"
                         value={input}
@@ -939,6 +1079,19 @@ export default function Home() {
                     </p>
                   )}
                 </div>
+
+                {isViewingCurrentDay ? (
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleMarkComplete}
+                      disabled={!canMarkComplete || isSending}
+                      className="inline-flex items-center justify-center rounded-full border border-emerald-300/25 bg-emerald-50 px-6 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-emerald-950 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-white/8 disabled:bg-white/20 disabled:text-white/40"
+                    >
+                      {isSending ? "Updating..." : "Complete lesson"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -948,7 +1101,9 @@ export default function Home() {
                 <div className="mt-5 grid gap-4">
                   <div>
                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-white/36">Topic</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{setup.topic.trim()}</p>
+                    <p className="mt-2 text-lg font-semibold text-white">
+                      {formatSelectedTopic(setup.selectedTopic)}
+                    </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-2xl border border-white/8 bg-black/15 px-4 py-3">
