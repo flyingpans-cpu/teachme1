@@ -104,17 +104,17 @@ function MarkdownLesson(props: { content: string }) {
             </h1>
           ),
           h2: ({ children }) => (
-            <h2 className="mt-14 border-t border-white/10 pt-10 text-3xl font-semibold tracking-[-0.04em] text-white sm:text-4xl">
+            <h2 className="mt-12 border-t border-white/10 pt-8 text-2xl font-semibold tracking-[-0.03em] text-white sm:text-3xl">
               {children}
             </h2>
           ),
           h3: ({ children }) => (
-            <h3 className="mt-10 text-2xl font-semibold tracking-[-0.03em] text-white sm:text-3xl">
+            <h3 className="mt-8 text-xl font-semibold tracking-[-0.02em] text-white sm:text-2xl">
               {children}
             </h3>
           ),
           h4: ({ children }) => (
-            <h4 className="mt-8 text-xl font-semibold tracking-[-0.02em] text-white/94">
+            <h4 className="mt-7 text-lg font-semibold tracking-[-0.01em] text-white/94">
               {children}
             </h4>
           ),
