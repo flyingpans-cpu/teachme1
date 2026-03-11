@@ -91,7 +91,7 @@ export async function POST(request: Request) {
 
     if (existingState.stage === "generated" && existingState.lessonState) {
       const allocation = buildTimeAllocation({
-        weeks: 5,
+        weeks: 1,
         hoursPerWeek: captured.hoursPerWeek ?? 0,
         sessionsPerWeek: captured.sessionsPerWeek ?? 0,
         preferredSessionLengthMinutes: captured.preferredSessionLengthMinutes ?? 0,
@@ -326,7 +326,7 @@ export async function POST(request: Request) {
       const requestInput = CourseRequestSchema.parse({
         topic: captured.topic,
         level: captured.level,
-        weeks: 5,
+        weeks: 1,
         hoursPerWeek: captured.hoursPerWeek,
         sessionsPerWeek: captured.sessionsPerWeek,
         preferredSessionLengthMinutes: captured.preferredSessionLengthMinutes,
@@ -352,6 +352,7 @@ export async function POST(request: Request) {
           topic: requestInput.topic,
           level: requestInput.level,
           styleSummary: buildStyleSummary(),
+          weeks: requestInput.weeks,
           sessions: allocation.sessions,
           minutesPerWeek: allocation.minutesPerWeek,
         }),

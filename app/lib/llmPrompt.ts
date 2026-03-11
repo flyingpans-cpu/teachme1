@@ -27,11 +27,6 @@ export type CheckpointIntentResult = {
   reasoning?: string;
 };
 
-export type TopicSuggestion = {
-  title: string;
-  description: string;
-};
-
 export function getOpenAIClient() {
   return new OpenAI({
     apiKey: defaultApiKey,
@@ -75,55 +70,6 @@ function extractJson(raw: string) {
   const jsonStart = raw.indexOf("{");
   const jsonEnd = raw.lastIndexOf("}");
   return jsonStart >= 0 && jsonEnd >= jsonStart ? raw.slice(jsonStart, jsonEnd + 1) : raw;
-}
-
-export async function suggestTopicOptionsWithLLM(options: {
-  topicInput: string;
-}): Promise<{ options: TopicSuggestion[] }> {
-  const { topicInput } = options;
-  const normalizedTopicInput = topicInput.trim().replace(/\s+/g, " ");
-  const client = getOpenAIClient();
-
-  const systemPrompt = [
-    "You help disambiguate what a learner wants to study before course generation.",
-    "Return ONLY minified JSON.",
-    "Generate up to 5 concrete topic options based on the learner input.",
-    "Option 1 MUST preserve the learner input verbatim as the title. Do not rename it, reinterpret it, add punctuation, or mutate the wording.",
-    "Option 1 description should say that the course will teach exactly what the learner asked for, using their intended meaning.",
-    "Each option must be distinct, plausible, and narrow enough to guide accurate course generation.",
-    "Descriptions must be one sentence and explain what the learner would actually study.",
-    "Avoid overlapping duplicates and avoid joke options.",
-    'Output schema: {"options":[{"title":string,"description":string}]}',
-  ].join("\n");
-
-  const userPrompt = `Learner input: ${normalizedTopicInput}`;
-
-  const response = await createChatCompletion(client, {
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.4,
-  });
-
-  const raw = response.choices[0]?.message?.content ?? "";
-  if (!raw) {
-    throw new Error("Empty response from topic suggestion LLM");
-  }
-
-  const parsed = JSON.parse(extractJson(raw)) as { options?: TopicSuggestion[] };
-  const exactOption: TopicSuggestion = {
-    title: normalizedTopicInput,
-    description: `Learn exactly what you meant by "${normalizedTopicInput}", using your intended meaning and context.`,
-  };
-  const otherOptions = (parsed.options ?? []).filter(
-    (option) =>
-      option.title.trim().toLowerCase() !== normalizedTopicInput.toLowerCase(),
-  );
-
-  return {
-    options: [exactOption, ...otherOptions].slice(0, 5),
-  };
 }
 
 export async function runTutorIntakeWithLLM(options: {
@@ -202,10 +148,11 @@ export async function generateCourseOutlineWithLLM(options: {
   level?: string;
   priorKnowledge?: string;
   styleSummary: string;
+  weeks: number;
   sessions: AllocatedSession[];
   minutesPerWeek: number;
 }): Promise<GeneratedCourse> {
-  const { topic, level, priorKnowledge, styleSummary, sessions, minutesPerWeek } =
+  const { topic, level, priorKnowledge, styleSummary, weeks, sessions, minutesPerWeek } =
     options;
 
   const client = getOpenAIClient();
@@ -218,7 +165,7 @@ export async function generateCourseOutlineWithLLM(options: {
     .join("\n");
 
   const instructions = [
-    "You are an expert instructional designer creating a 5-week course outline.",
+    "You are an expert instructional designer creating a structured course outline.",
     "",
     "You will receive:",
     "- Topic and learner level",
@@ -258,7 +205,7 @@ export async function generateCourseOutlineWithLLM(options: {
     "Important time rules:",
     "- For each session, set estimatedMinutes equal to targetMinutes in the skeleton.",
     "- For each week, targetMinutes equals sum of its sessions.",
-    "- Total minutes must equal 5 * minutesPerWeek.",
+    `- Total minutes must equal ${weeks} * minutesPerWeek.`,
     "",
     "Respond with ONLY minified JSON.",
   ].join("\n");
@@ -328,10 +275,10 @@ export async function generateLessonChunkWithLLM(options: {
     "2. Why This Matters",
     "3. Tradeoffs (short table)",
     "4. Build It: Guided Implementation + Checkpoint 1",
-    "5. RESPONSE ANALYSIS (after learner returns)",
+    "5. What Your Result Shows (after learner returns)",
     "6. DEEPER EXPLANATION",
     "7. INTERACTIVE CHECKPOINT 2 (exercise + explicit pause)",
-    "8. RESPONSE ANALYSIS (second return)",
+    "8. What Your Result Shows (second return)",
     "9. What the Learner Should Observe",
     "10. Failure Modes",
     "11. Reflection Questions",
@@ -467,7 +414,7 @@ export async function answerCheckpointSideQuestionWithLLM(options: {
     "Be concise and helpful.",
     "Do not continue the lesson.",
     "Do not produce lesson template sections or markdown section headings.",
-    "Do not say RESPONSE ANALYSIS, DEEPER EXPLANATION, or INTERACTIVE CHECKPOINT 2.",
+    "Do not say What Your Result Shows, DEEPER EXPLANATION, or INTERACTIVE CHECKPOINT 2.",
     "Do not assume the learner completed the exercise.",
   ].join("\n");
 

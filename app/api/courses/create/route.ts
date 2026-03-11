@@ -43,6 +43,7 @@ export async function POST(request: Request) {
       level: parsed.level,
       priorKnowledge: parsed.priorKnowledge,
       styleSummary,
+      weeks: parsed.weeks,
       sessions: allocation.sessions,
       minutesPerWeek: allocation.minutesPerWeek,
     });
